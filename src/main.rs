@@ -2,6 +2,7 @@ use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 
 async fn say_hi(req: HttpRequest) -> impl Responder {
     let hi_to = req.match_info().get("name").unwrap_or("there");
+    println!("{} - {}", req.method(), req.path());
     format!("Hi {}!", hi_to)
 }
 
