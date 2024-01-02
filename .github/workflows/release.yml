@@ -20,9 +20,9 @@ jobs:
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
 
-          # - build: macos
-          #   os: macos-latest
-          #   target: x86_64-apple-darwin
+          - build: macos
+            os: macos-latest
+            target: x86_64-apple-darwin
 
     steps:
       - name: Checkout
@@ -59,17 +59,18 @@ jobs:
           mv "target/${{ matrix.target }}/release/$server_binary" "$dirname"
 
           tar -czf "$dirname.tar.gz" "$dirname"
-          echo "ASSET=$dirname.tar.gz" >> $GITHUB_ENV
+          echo "SERVER_ASSET=$dirname.tar.gz" >> $GITHUB_ENV
 
           dirname="$gha_binary-${{ env.VERSION }}-${{ matrix.target }}"
           mkdir "$dirname"
           mv "target/${{ matrix.target }}/release/$gha_binary" "$dirname"
 
           tar -czf "$dirname.tar.gz" "$dirname"
-          echo "ASSET=$dirname.tar.gz" >> $GITHUB_ENV
+          echo "GHA_ASSET=$dirname.tar.gz" >> $GITHUB_ENV
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ env.ASSET }}
+            ${{ env.SERVER_ASSET }}
+            ${{ env.GHA_ASSET }}
