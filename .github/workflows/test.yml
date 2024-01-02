@@ -1,0 +1,25 @@
+name: "Test Web server"
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Test Web server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Ensure rustfmt is installed and setup problem matcher
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build
+        run: cargo build --release --all
+
+      - name: Run server
+        run: ./target/release/decay_gha start "./target/release/decay" "8000"
+
+      - name: Test server
+        run: curl "http://localhost:8000/mars"
+
+      - name: Stop server
+        run: ./target/release/decay_gha stop

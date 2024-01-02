@@ -14,7 +14,7 @@ use gha_commands::get_state;
 
 use crate::gha_commands::save_state;
 
-const PID_STATE_KEY: &str = "decay-pid";
+const PID_STATE_KEY: &str = "DECAY_PID";
 
 fn main() {
     let args = Cli::parse();

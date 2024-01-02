@@ -23,5 +23,6 @@ pub fn save_state(key: &str, value: &str) {
 }
 
 pub fn get_state(key: &str) -> Result<String, env::VarError> {
+    println!("Reading env 'STATE_{}'", key);
     env::var(format!("STATE_{}", key))
 }
