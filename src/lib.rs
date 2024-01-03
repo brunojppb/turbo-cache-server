@@ -1,3 +1,3 @@
-pub mod config;
+pub mod app_settings;
 pub mod routes;
 pub mod startup;
