@@ -3,6 +3,8 @@ use std::env;
 #[derive(Clone)]
 pub struct AppSettings {
     pub port: u16,
+    pub s3_access_key: String,
+    pub s3_secret_key: String,
 }
 
 pub fn get_settings() -> AppSettings {
@@ -11,5 +13,13 @@ pub fn get_settings() -> AppSettings {
         .parse::<u16>()
         .expect("Could not read PORT from env");
 
-    AppSettings { port }
+    let s3_access_key = env::var("S3_ACCESS_KEY").expect("Could not read S3_ACCESS_KEY from env");
+
+    let s3_secret_key = env::var("S3_SECRET_KEY").expect("Could not read S3_SECRET_KEY from env");
+
+    AppSettings {
+        port,
+        s3_access_key,
+        s3_secret_key,
+    }
 }
