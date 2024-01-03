@@ -1,20 +1,11 @@
-use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use std::net::TcpListener;
 
-async fn say_hi(req: HttpRequest) -> impl Responder {
-    let hi_to = req.match_info().get("name").unwrap_or("there");
-    println!("{} - {}", req.method(), req.path());
-    format!("Hi {}!", hi_to)
-}
+use decay::app_settings::get_settings;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    println!("Running Decay server...");
-    HttpServer::new(|| {
-        App::new()
-            .route("/", web::get().to(say_hi))
-            .route("/{name}", web::get().to(say_hi))
-    })
-    .bind("127.0.0.1:8000")?
-    .run()
-    .await
+    let app_settings = get_settings();
+    let address = format!("127.0.0.1:{}", app_settings.port);
+    let listener = TcpListener::bind(address)?;
+    decay::startup::run(listener)?.await
 }
