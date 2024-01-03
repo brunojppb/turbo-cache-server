@@ -5,7 +5,7 @@ on:
 
 jobs:
   lint:
-    name: cargo fmt
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,10 +19,10 @@ jobs:
       - name: Run Clippy
         env:
           RUSTFLAGS: "-Dwarnings"
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --all-targets
 
   test:
-    name: cargo test
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
