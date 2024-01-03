@@ -1,11 +1,22 @@
 [package]
 name = "decay"
 version = "0.1.0"
+authors = ["Bruno Paulino <hi@bpaulino.com>"]
 edition = "2021"
 
-[workspace]
-members = ["./decay_gha"]
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "decay"
 
 [dependencies]
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[workspace]
+members = ["./decay_gha"]
+
+[dev-dependencies]
+reqwest = "0.11.23"
