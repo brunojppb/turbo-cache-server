@@ -16,6 +16,7 @@ async fn health_check_test() {
     assert_eq!(Some(0), response.content_length());
 }
 
+#[allow(clippy::let_underscore_future)]
 fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to local address");
     let port = listener.local_addr().unwrap().port();
