@@ -25,7 +25,14 @@ jobs:
         run: docker create --name dist rust_build
 
       - name: copy binary
-        run: mkdir out && docker cp dist:app/release/decay out/decay
+        run: |
+          mkdir out && \
+          docker cp dist:app/target/release/decay out/decay && \
+          docker cp dist:app/target/release/decay_gha out/decay_gha
 
-      - name: list
-        run: cd out && ls -la
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            out/decay
+            out/decay_gha
