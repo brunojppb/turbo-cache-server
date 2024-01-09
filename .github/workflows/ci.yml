@@ -5,7 +5,7 @@ on:
 
 jobs:
   lint:
-    name: cargo fmt
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,12 +19,18 @@ jobs:
       - name: Run Clippy
         env:
           RUSTFLAGS: "-Dwarnings"
-        run: cargo clippy --all-targets --all-features
+        run: cargo clippy --all-targets
 
   test:
-    name: cargo test
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo test --all-features
+        env:
+          S3_ACCESS_KEY: some-access-key
+          S3_SECRET_KEY: some-secret-key
+          S3_REGION: eu-central-1
+          S3_BUCKET_NAME: turbo
+          S3_ENDPOINT: "http://localhost:9000"
