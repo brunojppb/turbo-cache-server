@@ -1,6 +1,6 @@
 use std::net::TcpListener;
 
-use decay::storage::Storage;
+use decay::{app_settings::get_settings, storage::Storage};
 
 #[tokio::test]
 async fn health_check_test() {
@@ -26,7 +26,8 @@ pub struct TestApp {
 fn spawn_app() -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to local address");
     let port = listener.local_addr().unwrap().port();
-    let storage = Storage::new();
+    let app_settings = get_settings();
+    let storage = Storage::new(&app_settings);
     let server = decay::startup::run(listener, storage).expect("Could not bind to listener");
     let _ = tokio::spawn(server);
 
