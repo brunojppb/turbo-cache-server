@@ -6,6 +6,8 @@ use crate::{
     storage::Storage,
 };
 
+const ONE_HUNDRED_MB_IN_BYTES: usize = 10 * 1024 * 1024;
+
 pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::Error> {
     let storage = web::Data::new(storage);
     let server = HttpServer::new(move || {
@@ -15,7 +17,7 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
             .route("/v8/artifacts/{hash}", web::put().to(put_file))
             .route("/v8/artifacts/{hash}", web::get().to(get_file))
             .app_data(storage.clone())
-            .app_data(actix_web::web::PayloadConfig::new(999999))
+            .app_data(actix_web::web::PayloadConfig::new(ONE_HUNDRED_MB_IN_BYTES))
     })
     .listen(listener)?
     .run();
