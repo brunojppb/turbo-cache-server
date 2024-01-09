@@ -2,7 +2,7 @@ use actix_web::{dev::Server, web, App, HttpServer};
 use std::net::TcpListener;
 
 use crate::{
-    routes::{get_file, health_check, hello, put_file},
+    routes::{get_file, health_check, post_events, put_file},
     storage::Storage,
 };
 
@@ -10,9 +10,8 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
     let storage = web::Data::new(storage);
     let server = HttpServer::new(move || {
         App::new()
-            .route("/", web::get().to(hello))
             .route("/management/health", web::get().to(health_check))
-            .route("/{name}", web::get().to(hello))
+            .route("/v8/artifacts/events", web::post().to(post_events))
             .route("/v8/artifacts/{hash}", web::put().to(put_file))
             .route("/v8/artifacts/{hash}", web::get().to(get_file))
             .app_data(storage.clone())
