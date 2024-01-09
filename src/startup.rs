@@ -6,7 +6,7 @@ use crate::{
     storage::Storage,
 };
 
-const ONE_HUNDRED_MB_IN_BYTES: usize = 10 * 1024 * 1024;
+const ONE_HUNDRED_MB_IN_BYTES: usize = 100 * 1024 * 1024;
 
 pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::Error> {
     let storage = web::Data::new(storage);
