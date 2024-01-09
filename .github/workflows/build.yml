@@ -1,0 +1,38 @@
+name: Build binary
+on:
+  # workflow_dispatch:
+  #   inputs: {}
+  pull_request:
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: build binary
+        run: docker build -t rust_build .
+
+      - name: create temp container
+        run: docker create --name dist rust_build
+
+      - name: copy binary
+        run: |
+          mkdir out && \
+          docker cp dist:app/target/release/decay out/decay && \
+          docker cp dist:app/target/release/decay_gha out/decay_gha
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            out/decay
+            out/decay_gha
