@@ -20,8 +20,10 @@ impl Storage {
             region: settings.s3_region.clone(),
             endpoint: settings.s3_endpoint.clone(),
         };
-        let bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
+        let mut bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
             .expect("Could not create S3 bucket");
+
+        bucket.set_path_style();
 
         Self { bucket }
     }
@@ -35,10 +37,10 @@ impl Storage {
         }
     }
 
-    pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), &str> {
+    pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
         match self.bucket.put_object(path, data).await {
             Ok(_response) => Ok(()),
-            Err(_e) => Err("Could not upload file"),
+            Err(e) => Err(format!("Could not upload file: {}", e)),
         }
     }
 }
