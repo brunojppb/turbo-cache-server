@@ -570,6 +570,7 @@ dependencies = [
  "dotenv",
  "reqwest",
  "rust-s3",
+ "serde",
  "tokio",
 ]
 
