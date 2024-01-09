@@ -1,24 +1,27 @@
 use s3::{creds::Credentials, Bucket, Region};
 
+use crate::app_settings::AppSettings;
+
 pub struct Storage {
     bucket: Bucket,
 }
 
 impl Storage {
-    pub fn new() -> Self {
+    pub fn new(settings: &AppSettings) -> Self {
         let credentials = Credentials::new(
-            Some("ShwLIHVR2zCgA8qoiftf"),
-            Some("GYe6lj85PPofETRMUMghy2DCQhrW1bjSvi6Ep24k"),
+            Some(&settings.s3_access_key),
+            Some(&settings.s3_secret_key),
             None,
             None,
             None,
         )
         .expect("Could not create S3 credentials");
         let region = Region::Custom {
-            region: "eu-central-1".to_owned(),
-            endpoint: "http://localhost:9000".to_owned(),
+            region: settings.s3_region.clone(),
+            endpoint: settings.s3_endpoint.clone(),
         };
-        let bucket = Bucket::new("turbo", region, credentials).expect("Could not create S3 bucket");
+        let bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
+            .expect("Could not create S3 bucket");
 
         Self { bucket }
     }
