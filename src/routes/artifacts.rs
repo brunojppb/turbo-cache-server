@@ -14,7 +14,7 @@ struct Artifact {
 }
 
 pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> impl Responder {
-    let artifact_info = match artifact_info_from_req(req) {
+    let artifact_info = match ArtifactRequest::from(req) {
         Some(info) => info,
         None => return HttpResponse::BadRequest().finish(),
     };
@@ -27,14 +27,14 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
             HttpResponse::Created().json(artifact)
         }
         Err(e) => {
-            println!("Something went wrong {}", e);
+            eprintln!("Something went wrong {}", e);
             HttpResponse::BadRequest().finish()
         }
     }
 }
 
 pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
-    let artifact_info = match artifact_info_from_req(req) {
+    let artifact_info = match ArtifactRequest::from(req) {
         Some(info) => info,
         None => return HttpResponse::NotFound().finish(),
     };
@@ -51,23 +51,25 @@ struct ArtifactRequest {
 }
 
 impl ArtifactRequest {
+    /// File path as represented in the S3 storage
     fn file_path(&self) -> String {
         format!("/{}/{}", self.team, self.hash)
     }
-}
 
-fn artifact_info_from_req(req: HttpRequest) -> Option<ArtifactRequest> {
-    let hash = match req.match_info().get("hash") {
-        Some(h) => h.to_owned(),
-        None => return None,
-    };
+    fn from(req: HttpRequest) -> Option<Self> {
+        let hash = match req.match_info().get("hash") {
+            Some(h) => h.to_owned(),
+            None => return None,
+        };
 
-    let query_string = Query::<HashMap<String, String>>::from_query(req.query_string()).unwrap();
-    let default_team_name = "no_team".to_owned();
-    let team = query_string
-        .get("slug")
-        .unwrap_or(&default_team_name)
-        .to_string();
+        let query_string =
+            Query::<HashMap<String, String>>::from_query(req.query_string()).unwrap();
+        let default_team_name = "no_team".to_owned();
+        let team = query_string
+            .get("slug")
+            .unwrap_or(&default_team_name)
+            .to_string();
 
-    Some(ArtifactRequest { hash, team })
+        Some(ArtifactRequest { hash, team })
+    }
 }
