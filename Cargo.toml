@@ -17,6 +17,7 @@ dotenv = "0.15.0"
 rust-s3 = "0.33.0"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures = "0.3"
 
 [workspace]
 members = ["./decay_gha"]
