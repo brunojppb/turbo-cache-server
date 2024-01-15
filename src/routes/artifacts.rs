@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use actix_web::{
     web::{Bytes, Data, Query},
-    HttpRequest, HttpResponse, Responder,
+    Error, HttpRequest, HttpResponse, Responder,
 };
+use futures::StreamExt;
 use serde::Serialize;
 
 use crate::storage::Storage;
@@ -39,10 +40,12 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         None => return HttpResponse::NotFound().finish(),
     };
 
-    match storage.get_file(&artifact_info.file_path()).await {
-        Some(file) => HttpResponse::Ok().body(file.to_vec()),
-        None => HttpResponse::NotFound().finish(),
-    }
+    let stream = match storage.get_file(&artifact_info.file_path()).await {
+        Some(response) => response.bytes.map(Result::<Bytes, Error>::Ok),
+        None => return HttpResponse::NotFound().finish(),
+    };
+
+    HttpResponse::Ok().streaming(stream)
 }
 
 struct ArtifactRequest {
