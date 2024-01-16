@@ -7,7 +7,8 @@ const tempDir = resolve(os.tmpdir(), "decay");
 
 const serverBinary = resolve(__dirname, "./decay");
 
-const subprocess = spawn("node", [serverBinary], {
+// @TODO: Check whether I actually want to give args to the binary on startup
+const subprocess = spawn(serverBinary, [/** input here as args once we suppor them */], {
   detached: true,
   stdio: "ignore",
   stdout: createWriteStream(resolve(tempDir, "out.log")),
