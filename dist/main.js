@@ -5,7 +5,7 @@ import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util";
 const serverBinary = resolve(__dirname, "./decay");
 
 // @TODO: Check whether I actually want to give args to the binary on startup
-const subprocess = spawn(serverBinary, [/** input here as args once we suppor them */], {
+const decayProcess = spawn(serverBinary, [/** input here as args once we suppor them */], {
   detached: true,
   stdio: "ignore",
   stdout: createWriteStream(resolve(TEMP_DIR, "out.log")),
@@ -15,9 +15,9 @@ const subprocess = spawn(serverBinary, [/** input here as args once we suppor th
   },
 });
 
-subprocess.unref();
+decayProcess.unref();
 
-const pid = subprocess.pid?.toString();
+const pid = decayProcess.pid?.toString();
 
 console.log('Decay server pid to store: ', pid);
 saveState(DECAY_PID_KEY, pid);
