@@ -15,12 +15,12 @@ function getState(key) {
  * @param {string} value 
  */
 function saveState(key, value) {
-  const value = `${key}=${value}`;
+  const state = `${key}=${value}`;
   const stateFilePath = process.env.GITHUB_STATE;
   if (typeof stateFilePath !== 'string') {
     throw new Error('GITHUB_STATE file not available');
   }
-  fs.appendFileSync(stateFilePath, value);
+  fs.appendFileSync(stateFilePath, state);
 }
 
 const DECAY_PID_KEY = 'DECAY_PID_KEY'

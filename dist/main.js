@@ -1,6 +1,6 @@
-import { spawn } from "node:child_process";
-import { resolve } from "node:path";
-import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util";
+const { spawn } = require("node:child_process");
+const { resolve } = require("node:path");
+const { DECAY_PID_KEY, TEMP_DIR, saveState } = require("./util");
 
 const serverBinary = resolve(__dirname, "./decay");
 
