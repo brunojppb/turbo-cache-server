@@ -1,3 +1,4 @@
+const fs = require("node:fs/promises");
 const { getState, DECAY_PID_KEY } = require("./util");
 
 const pid = getState(DECAY_PID_KEY);
@@ -11,8 +12,17 @@ if (typeof pid === 'undefined') {
 console.log(`Decay server pid to stop: ${pid}`)
 process.kill(parseInt(pid));
 
-// @TODO: Output the logs from our decay server
-// const [std, error] = await Promise.all([
-//   readFile(resolve(TEMP_DIR, "out.log"), "utf8").catch((e) => console.error(e)),
-//   readFile(resolve(TEMP_DIR, "error.log"), "utf8").catch((e) => console.error(e)),
-// ]);
+Promise.all([
+  fs.readFile(resolve(TEMP_DIR, "out.log"), "utf8").catch((e) => console.error(e)),
+  fs.readFile(resolve(TEMP_DIR, "error.log"), "utf8").catch((e) => console.error(e)),
+]).then(([std, error]) => {
+  if (error) {
+    console.log(`Server output: `, std);
+  }
+  
+  if (error) {
+    console.error(`Server errors: `, err)
+  }
+});
+
+

@@ -1,5 +1,5 @@
-import { spawn } from "child_process";
-import { resolve } from "path";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util";
 
 const serverBinary = resolve(__dirname, "./decay");
