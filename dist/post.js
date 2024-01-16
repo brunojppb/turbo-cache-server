@@ -13,6 +13,6 @@ process.kill(parseInt(pid));
 
 // @TODO: Output the logs from our decay server
 // const [std, error] = await Promise.all([
-//   readFile(resolve(tempDir, "out.log"), "utf8").catch((e) => console.error(e)),
-//   readFile(resolve(tempDir, "error.log"), "utf8").catch((e) => console.error(e)),
+//   readFile(resolve(TEMP_DIR, "out.log"), "utf8").catch((e) => console.error(e)),
+//   readFile(resolve(TEMP_DIR, "error.log"), "utf8").catch((e) => console.error(e)),
 // ]);

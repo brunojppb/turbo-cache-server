@@ -1,9 +1,6 @@
 import { spawn } from "child_process";
 import { resolve } from "path";
-import { DECAY_PID_KEY, saveState } from "./util";
-
-
-const tempDir = resolve(os.tmpdir(), "decay");
+import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util";
 
 const serverBinary = resolve(__dirname, "./decay");
 
@@ -11,8 +8,8 @@ const serverBinary = resolve(__dirname, "./decay");
 const subprocess = spawn(serverBinary, [/** input here as args once we suppor them */], {
   detached: true,
   stdio: "ignore",
-  stdout: createWriteStream(resolve(tempDir, "out.log")),
-  stderr: createWriteStream(resolve(tempDir, "error.log")), 
+  stdout: createWriteStream(resolve(TEMP_DIR, "out.log")),
+  stderr: createWriteStream(resolve(TEMP_DIR, "error.log")), 
   env: {
     ...process.env,
   },

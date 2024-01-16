@@ -24,9 +24,11 @@ function saveState(key, value) {
 }
 
 const DECAY_PID_KEY = 'DECAY_PID_KEY'
+const TEMP_DIR = resolve(os.tmpdir(), "decay");
 
 module.exports = {
   getState,
   saveState,
+  TEMP_DIR,
   DECAY_PID_KEY
 }
