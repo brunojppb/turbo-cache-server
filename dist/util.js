@@ -1,3 +1,5 @@
+const { resolve } = require("node:path");
+
 /**
  * Read state value from the Github injected values
  * @param {string} key 
