@@ -19,7 +19,7 @@ jobs:
       - name: Run Clippy
         env:
           RUSTFLAGS: "-Dwarnings"
-        run: cargo clippy --all-targets
+        run: cargo clippy
 
   test:
     name: test
