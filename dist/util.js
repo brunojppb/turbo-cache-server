@@ -1,4 +1,5 @@
 const { resolve } = require("node:path");
+const os = require('node:os');
 
 /**
  * Read state value from the Github injected values
