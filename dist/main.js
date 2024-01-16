@@ -1,5 +1,6 @@
 const { spawn } = require("node:child_process");
 const { resolve } = require("node:path");
+const { createWriteStream } = require('node:fs')
 const { DECAY_PID_KEY, TEMP_DIR, saveState } = require("./util");
 
 const serverBinary = resolve(__dirname, "./decay");
