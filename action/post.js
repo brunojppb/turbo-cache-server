@@ -1,6 +1,6 @@
 const path = require('node:path')
 const fs = require("node:fs/promises");
-const { getState, DECAY_PID_KEY } = require("./util");
+const { getState, DECAY_PID_KEY, TEMP_DIR } = require("./util");
 
 const pid = getState(DECAY_PID_KEY);
 
@@ -10,7 +10,7 @@ if (typeof pid === 'undefined') {
 }
 
 // @TODO: Check whether the server is actually running
-console.log(`Decay server pid to stop: ${pid}`)
+console.log(`Decay server will be stopped on pid: ${pid}`)
 process.kill(parseInt(pid));
 
 function noop(error) {

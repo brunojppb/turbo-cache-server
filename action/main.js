@@ -24,5 +24,5 @@ decayProcess.unref();
 
 const pid = decayProcess.pid?.toString();
 
-console.log('Decay server pid to store: ', pid);
+console.log('Decay server running with pid: ', pid);
 saveState(DECAY_PID_KEY, pid);
