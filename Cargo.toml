@@ -21,3 +21,6 @@ futures = "0.3"
 
 [dev-dependencies]
 reqwest = "0.11.23"
+
+[profile.release]
+strip = true # Automatically strip symbols from the binary to reduce binary size
