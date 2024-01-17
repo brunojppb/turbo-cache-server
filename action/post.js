@@ -1,3 +1,4 @@
+const path = require('node:path')
 const fs = require("node:fs/promises");
 const { getState, DECAY_PID_KEY } = require("./util");
 
@@ -8,13 +9,18 @@ if (typeof pid === 'undefined') {
   process.exit(1);
 }
 
-// @TODO: Check whether the process is actually running
+// @TODO: Check whether the server is actually running
 console.log(`Decay server pid to stop: ${pid}`)
 process.kill(parseInt(pid));
 
+function noop(error) {
+  console.error(error)
+  return ""
+}
+
 Promise.all([
-  fs.readFile(resolve(TEMP_DIR, "out.log"), "utf8").catch((e) => console.error(e)),
-  fs.readFile(resolve(TEMP_DIR, "error.log"), "utf8").catch((e) => console.error(e)),
+  fs.readFile(path.resolve(TEMP_DIR, "out.log"), "utf8").catch(noop),
+  fs.readFile(path.resolve(TEMP_DIR, "error.log"), "utf8").catch(noop),
 ]).then(([std, error]) => {
   if (error) {
     console.log(`Server output: `, std);
