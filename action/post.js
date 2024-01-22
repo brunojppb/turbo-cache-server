@@ -22,7 +22,7 @@ Promise.all([
   fs.readFile(path.resolve(TEMP_DIR, "out.log"), "utf8").catch(noop),
   fs.readFile(path.resolve(TEMP_DIR, "error.log"), "utf8").catch(noop),
 ]).then(([std, error]) => {
-  if (error) {
+  if (std) {
     console.log(`Server output: `, std);
   }
   
