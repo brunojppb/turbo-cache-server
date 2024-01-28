@@ -20,7 +20,6 @@ const errOutput = createWriteStream(resolve(TEMP_DIR, "error.log"), {
 
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
-  stdio: "ignore",
   env: {
     ...process.env,
   },
