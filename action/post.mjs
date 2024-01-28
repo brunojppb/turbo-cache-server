@@ -15,7 +15,7 @@ process.kill(parseInt(pid));
 
 function noop(error) {
   console.error(error);
-  return "error reading output file";
+  return "";
 }
 
 Promise.all([
@@ -27,6 +27,6 @@ Promise.all([
   }
 
   if (error) {
-    console.error(`Server errors: `, err);
+    console.error(`Server errors: `, error);
   }
 });
