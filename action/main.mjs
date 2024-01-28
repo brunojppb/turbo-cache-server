@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import { URL } from "node:url";
 import { createWriteStream, mkdirSync, existsSync } from "node:fs";
 import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util.mjs";
 
+const __dirname = new URL(".", import.meta.url).pathname;
 const serverBinary = resolve(__dirname, "./decay");
 
 if (!existsSync(TEMP_DIR)) {
