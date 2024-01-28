@@ -1,17 +1,7 @@
 name: "Decay server"
-description: "Run the Decay server in the background, providing a turborepo remote cache API"
-# inputs:
-#   port:
-#     description: "Port to bind the server to"
-#     required: true
-#     default: "8000"
-# outputs:
-# url:
-#   description: "URL where the decay server is running at"
-# api_token:
-#   description: "Token to authenticate turborepo calls with"
+description: "Provides a turborepo remote cache server in the background"
+
 runs:
-  # Custom github actions only support either Node20 or Docker.
   using: "node20"
   main: "action/main.mjs"
   post: "action/post.mjs"
