@@ -22,5 +22,7 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
     .listen(listener)?
     .run();
 
+    println!("Decay server started");
+
     Ok(server)
 }
