@@ -11,12 +11,10 @@ if (!existsSync(TEMP_DIR)) {
   mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-const stdOutput = createWriteStream(resolve(TEMP_DIR, "out.log"), {
-  flags: "a",
-});
-const errOutput = createWriteStream(resolve(TEMP_DIR, "error.log"), {
-  flags: "a",
-});
+const outFile = resolve(TEMP_DIR, "out.log");
+const errFile = resolve(TEMP_DIR, "error.log");
+const stdOutput = createWriteStream(outFile, { flags: "a" });
+const errOutput = createWriteStream(errFile, { flags: "a" });
 
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
@@ -27,6 +25,8 @@ const decayProcess = spawn(serverBinary, [], {
 
 decayProcess.stdout.pipe(stdOutput);
 decayProcess.stderr.pipe(errOutput);
+console.log(`writing decay output at ${outFile}`);
+console.log(`writing decay errors at ${errFile}`);
 decayProcess.unref();
 
 const pid = decayProcess.pid?.toString();
