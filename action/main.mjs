@@ -17,24 +17,14 @@ if (!existsSync(TEMP_DIR)) {
 }
 
 const outFile = resolve(TEMP_DIR, "out.log");
-const errFile = resolve(TEMP_DIR, "error.log");
-writeFileSync(outFile, "stdOuput: ");
-writeFileSync(errFile, "errorOutput: ");
 
-const stdOutput = createWriteStream(outFile, { flags: "a" });
-const errOutput = createWriteStream(errFile, { flags: "a" });
-
-const decayProcess = spawn(serverBinary, [], {
+const decayProcess = spawn(serverBinary, [">", outFile, "2>&1"], {
   detached: true,
   env: {
     ...process.env,
   },
 });
 
-decayProcess.stdout.pipe(stdOutput);
-decayProcess.stderr.pipe(errOutput);
-console.log(`writing decay output at ${outFile}`);
-console.log(`writing decay errors at ${errFile}`);
 decayProcess.unref();
 
 const pid = decayProcess.pid?.toString();

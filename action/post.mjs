@@ -18,10 +18,10 @@ const stdLogs = fs.readFileSync(path.resolve(TEMP_DIR, "out.log"), {
   flag: "r",
 });
 
-const errLogs = fs.readFileSync(path.resolve(TEMP_DIR, "error.log"), {
-  encoding: "utf8",
-  flag: "r",
-});
+// const errLogs = fs.readFileSync(path.resolve(TEMP_DIR, "error.log"), {
+//   encoding: "utf8",
+//   flag: "r",
+// });
 
 console.log(`Server output: `, stdLogs);
 console.error(`\n\nServer errors: `, errLogs);
