@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { URL } from "node:url";
-import { createWriteStream, mkdirSync, existsSync } from "node:fs";
+import {
+  createWriteStream,
+  mkdirSync,
+  existsSync,
+  writeFileSync,
+} from "node:fs";
 import { DECAY_PID_KEY, TEMP_DIR, saveState } from "./util.mjs";
 
 const __dirname = new URL(".", import.meta.url).pathname;
@@ -13,6 +18,9 @@ if (!existsSync(TEMP_DIR)) {
 
 const outFile = resolve(TEMP_DIR, "out.log");
 const errFile = resolve(TEMP_DIR, "error.log");
+writeFileSync(outFile, "stdOuput: ");
+writeFileSync(errFile, "errorOutput: ");
+
 const stdOutput = createWriteStream(outFile, { flags: "a" });
 const errOutput = createWriteStream(errFile, { flags: "a" });
 
