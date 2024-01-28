@@ -13,5 +13,5 @@ description: "Run the Decay server in the background, providing a turborepo remo
 runs:
   # Custom github actions only support either Node20 or Docker.
   using: "node20"
-  main: "action/main.js"
-  post: "action/post.js"
+  main: "action/main.mjs"
+  post: "action/post.mjs"
