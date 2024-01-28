@@ -25,3 +25,4 @@ const errLogs = fs.readFileSync(path.resolve(TEMP_DIR, "error.log"), {
 
 console.log(`Server output: `, stdLogs);
 console.error(`\n\nServer errors: `, errLogs);
+process.exit(0);
