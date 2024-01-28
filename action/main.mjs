@@ -10,21 +10,15 @@ if (!existsSync(TEMP_DIR)) {
 }
 
 // @TODO: Check whether I actually want to give args to the binary on startup
-const decayProcess = spawn(
-  serverBinary,
-  [
-    /** input here as args once we suppor them */
-  ],
-  {
-    detached: true,
-    stdio: "ignore",
-    stdout: createWriteStream(resolve(TEMP_DIR, "out.log")),
-    stderr: createWriteStream(resolve(TEMP_DIR, "error.log")),
-    env: {
-      ...process.env,
-    },
+const decayProcess = spawn(serverBinary, [], {
+  detached: true,
+  stdio: "ignore",
+  stdout: createWriteStream(resolve(TEMP_DIR, "out.log")),
+  stderr: createWriteStream(resolve(TEMP_DIR, "error.log")),
+  env: {
+    ...process.env,
   },
-);
+});
 
 decayProcess.unref();
 
