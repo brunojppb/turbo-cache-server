@@ -1,5 +1,5 @@
 import path from "node:path";
-import fs from "node:fs/promises";
+import fs from "node:fs";
 import { getState, DECAY_PID_KEY, TEMP_DIR } from "./util.mjs";
 
 const pid = getState(DECAY_PID_KEY);
@@ -13,20 +13,15 @@ if (typeof pid === "undefined") {
 console.log(`Decay server will be stopped on pid: ${pid}`);
 process.kill(parseInt(pid));
 
-function noop(error) {
-  console.error(error);
-  return "";
-}
-
-Promise.all([
-  fs.readFile(path.resolve(TEMP_DIR, "out.log"), "utf8").catch(noop),
-  fs.readFile(path.resolve(TEMP_DIR, "error.log"), "utf8").catch(noop),
-]).then(([std, error]) => {
-  if (std) {
-    console.log(`Server output: `, std);
-  }
-
-  if (error) {
-    console.error(`Server errors: `, error);
-  }
+const stdLogs = fs.readFileSync(path.resolve(TEMP_DIR, "out.log"), {
+  encoding: "utf8",
+  flag: "r",
 });
+
+const errLogs = fs.readFileSync(path.resolve(TEMP_DIR, "error.log"), {
+  encoding: "utf8",
+  flag: "r",
+});
+
+console.log(`Server output: `, stdLogs);
+console.error(`\n\nServer errors: `, errLogs);

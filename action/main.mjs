@@ -9,17 +9,22 @@ if (!existsSync(TEMP_DIR)) {
   mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-// @TODO: Check whether I actually want to give args to the binary on startup
+const stdOutput = createWriteStream(resolve(TEMP_DIR, "out.log"), {
+  flags: "a",
+});
+const errOutput = createWriteStream(resolve(TEMP_DIR, "error.log"), {
+  flags: "a",
+});
+
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
-  stdio: "ignore",
-  stdout: createWriteStream(resolve(TEMP_DIR, "out.log")),
-  stderr: createWriteStream(resolve(TEMP_DIR, "error.log")),
   env: {
     ...process.env,
   },
 });
 
+decayProcess.stdout.pipe(stdOutput);
+decayProcess.stderr.pipe(errOutput);
 decayProcess.unref();
 
 const pid = decayProcess.pid?.toString();
