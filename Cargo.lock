@@ -530,6 +530,7 @@ dependencies = [
  "dotenv",
  "env_logger",
  "futures",
+ "log",
  "openssl",
  "reqwest",
  "rust-s3",
