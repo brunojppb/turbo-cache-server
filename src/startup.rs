@@ -1,4 +1,4 @@
-use actix_web::{dev::Server, web, App, HttpServer};
+use actix_web::{dev::Server, middleware::Logger, web, App, HttpServer};
 use std::net::TcpListener;
 
 use crate::{
@@ -12,6 +12,7 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
     let storage = web::Data::new(storage);
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .route("/management/health", web::get().to(health_check))
             .route("/v8/artifacts/events", web::post().to(post_events))
             .route("/v8/artifacts/{hash}", web::put().to(put_file))
