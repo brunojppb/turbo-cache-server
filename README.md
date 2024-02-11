@@ -24,7 +24,7 @@ env:
 > identify the Remote Cache feature is enabled and can use it across your
 > CI pipelines. You can [read more about this here](https://turbo.build/repo/docs/ci#setup) on the Turborepo official docs.
 
-Make sure you have an S3-compatible storage available. We currently tested with:
+Make sure that you have an S3-compatible storage available. We currently tested with:
 
 - [Amazon S3](https://aws.amazon.com/s3/)
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
