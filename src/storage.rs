@@ -8,22 +8,33 @@ pub struct Storage {
 
 impl Storage {
     pub fn new(settings: &AppSettings) -> Self {
-        let credentials = Credentials::new(
-            Some(&settings.s3_access_key),
-            Some(&settings.s3_secret_key),
-            None,
-            None,
-            None,
-        )
-        .expect("Could not create S3 credentials");
-        let region = Region::Custom {
-            region: settings.s3_region.clone(),
-            endpoint: settings.s3_endpoint.clone(),
+        let region = match &settings.s3_endpoint {
+            Some(endpoint) => Region::Custom {
+                endpoint: endpoint.clone(),
+                region: settings.s3_region.clone(),
+            },
+            None => settings
+                .s3_region
+                .parse()
+                .expect("AWS region should be present"),
         };
-        let mut bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
-            .expect("Could not create S3 bucket");
 
-        bucket.set_path_style();
+        let credentials = match (&settings.s3_access_key, &settings.s3_secret_key) {
+            (Some(access_key), Some(secret_key)) => {
+                Credentials::new(Some(access_key), Some(secret_key), None, None, None).unwrap()
+            }
+            // If your Credentials are handled via IAM policies and allow
+            // your network to access S3 directly without any credentials setup
+            // Then no need to setup credentials at all. Defaults should be fine
+            _ => Credentials::default().expect("Could not use default AWS credentials"),
+        };
+
+        let mut bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
+            .expect("Could not create a S3 bucket");
+
+        if settings.s3_use_path_style {
+            bucket.set_path_style()
+        }
 
         Self { bucket }
     }

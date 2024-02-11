@@ -8,3 +8,4 @@
 *.log
 .env
 db
+s3_data
