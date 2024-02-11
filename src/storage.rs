@@ -26,7 +26,7 @@ impl Storage {
             // If your Credentials are handled via IAM policies and allow
             // your network to access S3 directly without any credentials setup
             // Then no need to setup credentials at all. Defaults should be fine
-            _ => Credentials::default().unwrap(),
+            _ => Credentials::default().expect("Could not use default AWS credentials"),
         };
 
         let mut bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
