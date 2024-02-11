@@ -1,4 +1,4 @@
-<p align="center"><br><img src="./icon.png" width="128" height="128" /></p>
+<p align="center"><br><img src="./icon.png" width="128" height="128" alt="Turbo engine" /></p>
 <h2 align="center">Turbo Cache Server</h2>
 <p align="center">
   <a href="https://turbo.build/repo">Turborepo</a> remote cache server as a Github Action with S3-compatible storage support.
