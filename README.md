@@ -35,9 +35,9 @@ env:
   uses: brunojppb/turbo-cache-server@0.0.2
   env:
     PORT: '8585'
-    S3_ACCESS_KEY: "ACCESS_KEY_FROM_MINIO"
-    S3_SECRET_KEY: "SECRET_KEY_FROM_MINIO"
-    S3_ENDPOINT": "YOUR_S3_ENDPOINT_HERE"
+    S3_ACCESS_KEY: "YOUR_S3_ACCESS_KEY"
+    S3_SECRET_KEY: "YOUR_S3_SECRET_KEY"
+    S3_ENDPOINT": "YOUR_S3_ENDPOINT"
     S3_BUCKET_NAME: "YOUR_BUCKET_NAME"
     # Region defaults to "eu-central-1"
     S3_REGION: "eu-central-1"
