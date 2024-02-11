@@ -70,7 +70,7 @@ Here is a diagram showing how the Turbo Cache Server works within our actions du
 sequenceDiagram
     actor A as Developer
     participant B as Github
-    participant C as Action runner
+    participant C as Actions Runner
     participant D as Turbo Cache Server
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
@@ -99,7 +99,7 @@ artifacts in S3 as you can see in the following diagram:
 sequenceDiagram
     actor A as Developer
     participant B as Github
-    participant C as Action runner
+    participant C as Actions Runner
     participant D as Turbo Cache Server
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
