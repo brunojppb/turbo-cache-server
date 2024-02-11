@@ -28,7 +28,7 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
             HttpResponse::Created().json(artifact)
         }
         Err(e) => {
-            log::error!("Could not store file on S3: {:?}", e);
+            tracing::error!("Could not store file on S3: {:?}", e);
             HttpResponse::BadRequest().finish()
         }
     }
