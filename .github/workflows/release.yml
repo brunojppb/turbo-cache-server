@@ -1,0 +1,55 @@
+name: Release new tag
+on:
+  workflow_dispatch:
+    inputs:
+      semver:
+        description: "The SemVer value used by this release"
+        type: string
+        required: true
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: "write-all"
+
+jobs:
+  release:
+    name: Release Turbo Cache Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Branch sanity check
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases should only run from the main branch"
+          exit 1
+
+      - name: build binary
+        run: docker build -t rust_build .
+
+      - name: create temp container to copy binary from
+        run: docker create --name dist rust_build
+
+        # Copy binary from the Docker container and put
+        # it within the `action` directory before commiting the new tag.
+        # This makes the binary available directly from the tag
+        # when using this repo as a Github Action, without requiring
+        # an extra binary download from somewhere else (Github Releases?)
+        # leading to a faster pipeline.
+      - name: copy binary
+        run: |
+          docker cp dist:app/target/x86_64-unknown-linux-musl/release/decay action/decay
+          chmod +x action/decay
+      - name: Commit new binary
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add action/decay
+          git commit -am "Release ${{ github.event.inputs.semver }}"
+          git tag -a ${{ github.event.inputs.semver }} -m "Release ${{ github.event.inputs.semver }}"
+      - name: Push new tag
+        run: git push origin ${{ github.event.inputs.semver }}
