@@ -24,6 +24,7 @@ pub struct TestApp {
 
 #[allow(clippy::let_underscore_future)]
 fn spawn_app() -> TestApp {
+    dotenv::dotenv().ok();
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to local address");
     let port = listener.local_addr().unwrap().port();
     let app_settings = get_settings();
