@@ -14,6 +14,7 @@ struct Artifact {
     filename: String,
 }
 
+#[tracing::instrument(name = "Store cache artifact", skip(storage, body))]
 pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(req) {
         Some(info) => info,
@@ -34,6 +35,7 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
     }
 }
 
+#[tracing::instrument(name = "Read cache artifact", skip(storage))]
 pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(req) {
         Some(info) => info,

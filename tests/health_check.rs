@@ -32,10 +32,10 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     let filter_level = "debug".into();
 
     if std::env::var("TEST_LOG").is_ok() {
-        let (subscriber, _guard) = get_subscriber(subscriber_name, filter_level, std::io::stdout);
+        let subscriber = get_subscriber(subscriber_name, filter_level, std::io::stdout);
         init_subscriber(subscriber);
     } else {
-        let (subscriber, _guard) = get_subscriber(subscriber_name, filter_level, std::io::sink);
+        let subscriber = get_subscriber(subscriber_name, filter_level, std::io::sink);
         init_subscriber(subscriber);
     }
 });

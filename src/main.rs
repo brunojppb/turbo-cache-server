@@ -14,7 +14,7 @@ async fn main() -> Result<(), std::io::Error> {
     // The worker guard from the subscriber needs to be held
     // until main stops, otherwise our non-blocking logging layer
     // will be dropped early and logs won't be written to a file
-    let (subscriber, _guard) = get_subscriber(PKG_NAME, "info".into(), std::io::stdout);
+    let subscriber = get_subscriber(PKG_NAME, "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
     let app_settings = get_settings();
