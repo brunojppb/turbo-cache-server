@@ -23,5 +23,7 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
     .listen(listener)?
     .run();
 
+    tracing::info!("Web server ready");
+
     Ok(server)
 }
