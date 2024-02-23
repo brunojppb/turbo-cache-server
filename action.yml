@@ -1,5 +1,5 @@
-name: "Decay server"
-description: "Provides a turborepo remote cache server in the background"
+name: "Turbo Cache Server"
+description: "Turborepo remote cache server background process as Action"
 
 runs:
   using: "node20"
