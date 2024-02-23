@@ -12,17 +12,20 @@ You can use the Turbo Cache Server as **Github Action**. Here is how:
 
 ```yml
 env:
-  TURBO_API: 'http://127.0.0.1:8585'
-  TURBO_TEAM: 'NAME_OF_YOUR_REPO_HERE'
-  TURBO_TOKEN: 'turbo-token'
+  TURBO_API: "http://127.0.0.1:8585"
+  TURBO_TEAM: "NAME_OF_YOUR_REPO_HERE"
+  # The value of TURBO_TOKEN is irrelevant
+  # as we don't perform any auth against the cache server
+  # but it's still necessary for Turborepo
+  TURBO_TOKEN: "turbo-token"
 ```
 
 > [!NOTE]
 > These environment variables are required by Turborepo so it can call
 > the Turbo Cache Server with the right HTTP body, headers and query strings.
 > These environment variables are necessary so the Turborepo binary can
-> identify the Remote Cache feature is enabled and can use it across your
-> CI pipelines. You can [read more about this here](https://turbo.build/repo/docs/ci#setup) on the Turborepo official docs.
+> identify the Remote Cache feature is enabled and can use them across all steps.
+> You can [read more about this here](https://turbo.build/repo/docs/ci#setup) on the Turborepo official docs.
 
 Make sure that you have an S3-compatible storage available. We currently tested with:
 
@@ -30,7 +33,7 @@ Make sure that you have an S3-compatible storage available. We currently tested 
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
 - [Minio Object Storage](https://min.io/)
 
-2. Still on your `yml` file, after checking out your repository, use our custom
+1. Still on your `yml` file, after checking out your code, use our custom
    action to start the Turbo Cache Server in the background:
 
 ```yml
@@ -38,9 +41,9 @@ Make sure that you have an S3-compatible storage available. We currently tested 
   uses: actions/checkout@v4
 
 - name: Turborepo Cache Server
-  uses: brunojppb/turbo-cache-server@0.0.2
+  uses: brunojppb/turbo-cache-server@1.0.0
   env:
-    PORT: '8585'
+    PORT: "8585"
     S3_ACCESS_KEY: "YOUR_S3_ACCESS_KEY"
     S3_SECRET_KEY: "YOUR_S3_SECRET_KEY"
     S3_ENDPOINT": "YOUR_S3_ENDPOINT"
@@ -55,7 +58,7 @@ Make sure that you have an S3-compatible storage available. We currently tested 
     S3_USE_PATH_STYLE: false
 ```
 
-And that is all you need to do use our remote cache server for Turborepo.
+And that is all you need to use our remote cache server for Turborepo.
 
 ## How does that work?
 
@@ -158,6 +161,7 @@ docker run \
 ```
 
 #### Setting up environment variables
+
 Copy the `.env.example` file, rename it to `.env` and add the environment
 variables required. As we use Minio locally, just go to the
 [Web UI](http://localhost:9001) of Minio, create a bucket and generate
