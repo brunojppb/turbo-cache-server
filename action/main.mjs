@@ -7,6 +7,7 @@ const serverBinary = resolve(__dirname, './decay')
 
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
+  stdio: 'ignore',
   env: {
     ...process.env,
     LOGS_DIRECTORY: LOGS_DIR,
