@@ -1,6 +1,6 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { getState, LOGS_DIR, DECAY_PID_KEY } from "./util.mjs";
+const fs = require("node:fs";)
+const path = require("node:path";)
+const { getState, LOGS_DIR, DECAY_PID_KEY } = require("./util.js";)
 
 const pid = getState(DECAY_PID_KEY);
 
@@ -27,4 +27,4 @@ console.log(`Reading Turbo Cache Server logs from ${logFile}`);
 const serverLogs = fs.readFileSync(logFile, { encoding: "utf-8" });
 console.log(serverLogs);
 
-process.exit(0);
+// process.exit(0);
