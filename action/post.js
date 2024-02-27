@@ -1,6 +1,6 @@
-const fs = require("node:fs";)
-const path = require("node:path";)
-const { getState, LOGS_DIR, DECAY_PID_KEY } = require("./util.js";)
+const fs = require("node:fs");
+const path = require("node:path");
+const { getState, LOGS_DIR, DECAY_PID_KEY } = require("./util.js");
 
 const pid = getState(DECAY_PID_KEY);
 
