@@ -27,3 +27,4 @@ Web server logs are being written at "${LOGS_DIR}"
 `);
 
 saveState(DECAY_PID_KEY, pid);
+process.exit(0);

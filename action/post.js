@@ -27,4 +27,4 @@ console.log(`Reading Turbo Cache Server logs from ${logFile}`);
 const serverLogs = fs.readFileSync(logFile, { encoding: "utf-8" });
 console.log(serverLogs);
 
-// process.exit(0);
+process.exit(0);
