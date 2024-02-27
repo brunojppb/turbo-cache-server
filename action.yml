@@ -3,5 +3,5 @@ description: "Turborepo remote cache server background process as Action"
 
 runs:
   using: "node20"
-  main: "action/main.js"
-  post: "action/post.js"
+  main: "action/main.mjs"
+  post: "action/post.mjs"

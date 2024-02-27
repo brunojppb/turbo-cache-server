@@ -1,6 +1,6 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { getState, LOGS_DIR, DECAY_PID_KEY } = require("./util.js");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getState, LOGS_DIR, DECAY_PID_KEY } from "./util.mjs";
 
 const pid = getState(DECAY_PID_KEY);
 
@@ -12,12 +12,7 @@ if (typeof pid === "undefined") {
 // @TODO: Check whether the server is actually running
 // Before sending a SIGTERM.
 console.log(`Turbo Cache Server will be stopped on pid: ${pid}`);
-try {
-  process.kill(parseInt(pid));
-} catch (err) {
-  console.error(`Error stopping Turbo Cache Server: ${err.message}`);
-  process.exit(1);
-}
+process.kill(parseInt(pid));
 
 // Read logs and output it as-is so we can debug
 // any potential errors during the Turborepo remote cache API calls.
