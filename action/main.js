@@ -11,6 +11,7 @@ if (!existsSync(LOGS_DIR)) {
 
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
+  stdio: "ignore"
   env: {
     ...process.env,
     LOGS_DIRECTORY: LOGS_DIR,
@@ -27,4 +28,4 @@ Web server logs are being written at "${LOGS_DIR}"
 `);
 
 saveState(DECAY_PID_KEY, pid);
-process.exit(0);
+// process.exit(0);
