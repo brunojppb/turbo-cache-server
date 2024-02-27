@@ -11,7 +11,7 @@ if (!existsSync(LOGS_DIR)) {
 
 const decayProcess = spawn(serverBinary, [], {
   detached: true,
-  stdio: "ignore"
+  stdio: "ignore",
   env: {
     ...process.env,
     LOGS_DIRECTORY: LOGS_DIR,
