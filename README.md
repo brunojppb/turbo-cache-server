@@ -41,7 +41,7 @@ Make sure that you have an S3-compatible storage available. We currently tested 
   uses: actions/checkout@v4
 
 - name: Turborepo Cache Server
-  uses: brunojppb/turbo-cache-server@1.0.0
+  uses: brunojppb/turbo-cache-server@1.0.2
   env:
     PORT: "8585"
     S3_ACCESS_KEY: "YOUR_S3_ACCESS_KEY"
