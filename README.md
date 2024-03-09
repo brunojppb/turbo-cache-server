@@ -56,6 +56,10 @@ Make sure that you have an S3-compatible storage available. We currently tested 
     # https://hostname.domain/bucket instead.
     # Defaults to "false"
     S3_USE_PATH_STYLE: false
+    # Max payload size for each cache object sent by Turborepo
+    # Defaults to 100 MB
+    # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
+    MAX_PAYLOAD_SIZE_IN_MB: "100"
 ```
 
 And that is all you need to use our remote cache server for Turborepo.
