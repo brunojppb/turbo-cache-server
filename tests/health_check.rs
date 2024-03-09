@@ -2,7 +2,6 @@ use std::net::TcpListener;
 
 use decay::{
     app_settings::get_settings,
-    storage::Storage,
     telemetry::{get_telemetry_subscriber, init_telemetry_subscriber},
 };
 
@@ -49,8 +48,7 @@ fn spawn_app() -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to local address");
     let port = listener.local_addr().unwrap().port();
     let app_settings = get_settings();
-    let storage = Storage::new(&app_settings);
-    let server = decay::startup::run(listener, storage).expect("Could not bind to listener");
+    let server = decay::startup::run(listener, app_settings).expect("Could not bind to listener");
     let _ = tokio::spawn(server);
 
     let address = format!("http://127.0.0.1:{}", port);

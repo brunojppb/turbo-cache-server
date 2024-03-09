@@ -2,13 +2,13 @@ use actix_web::{dev::Server, middleware::Logger, web, App, HttpServer};
 use std::net::TcpListener;
 
 use crate::{
+    app_settings::AppSettings,
     routes::{get_file, health_check, post_events, put_file},
     storage::Storage,
 };
 
-const ONE_HUNDRED_MB_IN_BYTES: usize = 100 * 1024 * 1024;
-
-pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::Error> {
+pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, std::io::Error> {
+    let storage = Storage::new(&app_settings);
     let storage = web::Data::new(storage);
     let server = HttpServer::new(move || {
         App::new()
@@ -18,7 +18,9 @@ pub fn run(listener: TcpListener, storage: Storage) -> Result<Server, std::io::E
             .route("/v8/artifacts/{hash}", web::put().to(put_file))
             .route("/v8/artifacts/{hash}", web::get().to(get_file))
             .app_data(storage.clone())
-            .app_data(actix_web::web::PayloadConfig::new(ONE_HUNDRED_MB_IN_BYTES))
+            .app_data(actix_web::web::PayloadConfig::new(
+                app_settings.max_payload_size_in_bytes,
+            ))
     })
     .listen(listener)?
     .run();
