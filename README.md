@@ -44,10 +44,10 @@ Make sure that you have an S3-compatible storage available. We currently tested 
   uses: brunojppb/turbo-cache-server@1.0.3
   env:
     PORT: "8585"
-    S3_ACCESS_KEY: "YOUR_S3_ACCESS_KEY"
-    S3_SECRET_KEY: "YOUR_S3_SECRET_KEY"
-    S3_ENDPOINT": "YOUR_S3_ENDPOINT"
-    S3_BUCKET_NAME: "YOUR_BUCKET_NAME"
+    S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+    S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+    S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+    S3_BUCKET_NAME: your-bucket-name-here
     # Region defaults to "eu-central-1"
     S3_REGION: "eu-central-1"
     # if your S3-compatible store does not support requests
