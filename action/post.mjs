@@ -1,18 +1,33 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { getState, LOGS_DIR, DECAY_PID_KEY } from './util.mjs'
+import { getState, LOGS_DIR, DECAY_PID_KEY, isProcessRunning, sleep } from './util.mjs'
 
-const pid = getState(DECAY_PID_KEY)
+let pid = getState(DECAY_PID_KEY)
 
 if (typeof pid === 'undefined') {
-  console.error(`${DECAY_PID_KEY} state could not be found`)
+  console.error(`${DECAY_PID_KEY} state could not be found. Exiting...`)
   process.exit(1)
 }
 
-// @TODO: Check whether the server is actually running
-// Before sending a SIGTERM.
+pid = parseInt(pid)
+
 console.log(`Turbo Cache Server will be stopped on pid: ${pid}`)
-process.kill(parseInt(pid))
+
+process.kill(pid, 'SIGTERM')
+
+const maxProcessCheckAttempts = 20
+const sleepTimeInMills = 500
+let killCounter = 0
+while (isProcessRunning(pid)) {
+  if (killCounter >= maxProcessCheckAttempts) {
+    console.error('Taking too long to stop. Killing it directly')
+    process.kill(pid, 'SIGKILL')
+    break
+  }
+  console.log(`Server is shutting down. Waiting ${sleepTimeInMills}ms...`)
+  await sleep(sleepTimeInMills)
+  killCounter = killCounter + 1
+}
 
 // Read logs and output it as-is so we can debug
 // any potential errors during the Turborepo remote cache API calls.
