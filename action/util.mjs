@@ -27,5 +27,30 @@ export function saveState(key, value) {
   fs.appendFileSync(stateFilePath, state)
 }
 
+/**
+ * Check whether the given process ID is still running
+ * @param {number} pid
+ */
+export function isProcessRunning(pid) {
+  try {
+    // If sig is 0, then no signal is sent, but existence and permission
+    // checks are still performed; this can be used to check for the
+    // existence of a process ID or process group ID that the caller is
+    // permitted to signal.
+    // See: https://man7.org/linux/man-pages/man2/kill.2.html
+    return process.kill(pid, 0)
+  } catch (error) {
+    return error.code === 'EPERM'
+  }
+}
+
+/**
+ * Sleep for the given time in milliseconds
+ * @param {number} timeInMills
+ */
+export function sleep(timeInMills) {
+  return new Promise(resolve => setTimeout(resolve, timeInMills))
+}
+
 export const LOGS_DIR = path.resolve(os.tmpdir(), 'decay_logs')
 export const DECAY_PID_KEY = 'DECAY_SERVER_PID'
