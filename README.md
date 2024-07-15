@@ -60,9 +60,16 @@ Make sure that you have an S3-compatible storage available. We currently tested 
     # Defaults to 100 MB
     # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
     MAX_PAYLOAD_SIZE_IN_MB: "100"
+
+# Now you can run your turborepo tasks and rely on the cache server
+# available in the background to provide previously built artifacts (cache hits)
+# and let Turborepo upload new artifacts when there is a cache miss.
+- name: Run tasks
+  run: turbo run test build typecheck
 ```
 
 And that is all you need to use our remote cache server for Turborepo.
+As a reference, take a look at [this example workflow file](https://github.com/brunojppb/turbo-decay/blob/main/.github/workflows/ci.yml) for inspiration.
 
 ## How does that work?
 
