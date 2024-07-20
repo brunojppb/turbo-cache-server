@@ -6,7 +6,7 @@ use wiremock::{
 use crate::helpers::{spawn_app, TurboArtifactFileMock};
 
 #[tokio::test]
-async fn upload_artifact_to_s3() {
+async fn upload_artifact_to_s3_test() {
     let app = spawn_app().await;
 
     let client = reqwest::Client::new();
@@ -40,7 +40,7 @@ async fn upload_artifact_to_s3() {
 }
 
 #[tokio::test]
-async fn download_artifact_from_s3() {
+async fn download_artifact_from_s3_test() {
     let app = spawn_app().await;
 
     let client = reqwest::Client::new();
@@ -66,4 +66,19 @@ async fn download_artifact_from_s3() {
 
     assert!(response.status() == 200);
     assert!(response.text().await.unwrap().as_bytes() == file_mock.file_bytes);
+}
+
+#[tokio::test]
+async fn list_team_artifacts_test() {
+    let app = spawn_app().await;
+
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{}/v8/artifacts", &app.address))
+        .send()
+        .await
+        .unwrap_or_else(|_| panic!("Failed to request /v8/artifacts"));
+
+    assert_eq!(response.status(), 200);
 }
