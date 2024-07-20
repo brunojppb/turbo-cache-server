@@ -82,3 +82,62 @@ async fn list_team_artifacts_test() {
 
     assert_eq!(response.status(), 200);
 }
+
+#[tokio::test]
+async fn artifact_exists_test() {
+    let app = spawn_app().await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    mock_s3_head_req(&app, &file_mock, 200).await;
+
+    let response = client
+        .head(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to HEAD and check artifact from Sake");
+
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn artifact_does_not_exist_test() {
+    let app = spawn_app().await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    mock_s3_head_req(&app, &file_mock, 404).await;
+
+    let response = client
+        .head(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to HEAD and check artifact from Sake");
+
+    assert_eq!(response.status(), 404);
+}
+
+/// A head request must be performed to the S3 bucket
+/// to check whether the artifact exists
+async fn mock_s3_head_req(
+    app: &crate::helpers::TestApp,
+    file_mock: &crate::helpers::TurboArtifactFileMock,
+    response_code: u16,
+) {
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(ResponseTemplate::new(response_code))
+    .mount(&app.storage_server)
+    .await;
+}
