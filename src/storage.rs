@@ -39,6 +39,7 @@ impl Storage {
         Self { bucket }
     }
 
+    /// Streams the file from the S3 bucket
     pub async fn get_file(&self, path: &str) -> Option<ResponseDataStream> {
         match self.bucket.get_object_stream(path).await {
             Ok(file_stream) => Some(file_stream),
@@ -46,10 +47,16 @@ impl Storage {
         }
     }
 
+    /// Stores the given data in the S3 bucket under the given path
     pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
         match self.bucket.put_object(path, data).await {
             Ok(_response) => Ok(()),
             Err(e) => Err(format!("Could not upload file: {}", e)),
         }
+    }
+
+    /// Checks whether the given file path exists on the S3 bucket
+    pub async fn file_exists(&self, path: &str) -> bool {
+        self.bucket.head_object(path).await.is_ok()
     }
 }
