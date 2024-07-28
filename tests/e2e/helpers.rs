@@ -1,12 +1,11 @@
-use std::net::TcpListener;
-
 use decay::{
     app_settings::get_settings,
     telemetry::{get_telemetry_subscriber, init_telemetry_subscriber},
 };
 use dotenv::dotenv;
+use std::net::TcpListener;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use wiremock::MockServer;
 
 pub struct TestApp {
@@ -21,7 +20,8 @@ pub struct TestApp {
 #[allow(clippy::let_underscore_future)]
 pub async fn spawn_app() -> TestApp {
     dotenv().ok();
-    Lazy::force(&TRACING);
+
+    LazyLock::force(&TRACING);
 
     let storage_server = MockServer::start().await;
 
@@ -45,7 +45,7 @@ pub async fn spawn_app() -> TestApp {
     }
 }
 
-static TRACING: Lazy<()> = Lazy::new(|| {
+static TRACING: LazyLock<()> = LazyLock::new(|| {
     let subscriber_name = "test";
     let filter_level = String::from("debug");
 

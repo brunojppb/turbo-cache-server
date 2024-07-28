@@ -12,6 +12,10 @@ use crate::{
 pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, std::io::Error> {
     let storage = Storage::new(&app_settings);
     let storage = web::Data::new(storage);
+    let port = listener
+        .local_addr()
+        .expect("TCPListener should be valid")
+        .port();
     let server = HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
@@ -30,7 +34,7 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
     .listen(listener)?
     .run();
 
-    println!("Decay server started");
+    tracing::info!(port = port, "Decay server started");
 
     Ok(server)
 }
