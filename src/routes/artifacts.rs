@@ -60,8 +60,8 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
 
             HttpResponse::Created().json(artifact)
         }
-        Err(e) => {
-            eprintln!("Something went wrong {}", e);
+        Err(error) => {
+            tracing::error!("Could not store file error={}", error);
             HttpResponse::BadRequest().finish()
         }
     }

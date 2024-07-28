@@ -533,7 +533,6 @@ dependencies = [
  "actix-web",
  "dotenv",
  "futures",
- "once_cell",
  "openssl",
  "reqwest",
  "rust-s3",
