@@ -34,4 +34,8 @@ wiremock = "0.6"
 
 
 [profile.release]
-strip = true # Automatically strip symbols from the binary to reduce binary size
+# For more details on smaller binary size, see:
+# https://github.com/johnthagen/min-sized-rust/blob/094d314f0c28f7e4bffeb0b0258f71cb303bd91a/README.md
+strip = true    # Automatically strip symbols from the binary to reduce binary size
+opt-level = "z" # Optimize for size.
+lto = true
