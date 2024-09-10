@@ -6,27 +6,6 @@
 
 ### How can I use this in my monorepo?
 
-You can use the Turbo Cache Server as **Github Action**. Here is how:
-
-1. On your workflow files, add the following global environment variables:
-
-```yml
-env:
-  TURBO_API: "http://127.0.0.1:8585"
-  TURBO_TEAM: "NAME_OF_YOUR_REPO_HERE"
-  # The value of TURBO_TOKEN is irrelevant
-  # as we don't perform any auth against the cache server
-  # but it's still necessary for Turborepo
-  TURBO_TOKEN: "turbo-token"
-```
-
-> [!NOTE] These environment variables are required by Turborepo so it can call
-> the Turbo Cache Server with the right HTTP body, headers and query strings.
-> These environment variables are necessary so the Turborepo binary can identify
-> the Remote Cache feature is enabled and can use them across all steps. You can
-> [read more about this here](https://turbo.build/repo/docs/ci#setup) on the
-> Turborepo official docs.
-
 Make sure that you have an S3-compatible storage available. We currently tested
 with:
 
@@ -34,40 +13,64 @@ with:
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
 - [Minio Object Storage](https://min.io/)
 
-1. Still on your `yml` file, after checking out your code, use our custom action
-   to start the Turbo Cache Server in the background:
+You can use the Turbo Cache Server as a **Github Action**. Here is how:
 
-```yml
-- name: Checkout repository
-  uses: actions/checkout@v4
+1. In your workflow files, add the following global environment variables:
 
-- name: Turborepo Cache Server
-  uses: brunojppb/turbo-cache-server@1.0.3
-  env:
-    PORT: "8585"
-    S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-    S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-    S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-    S3_BUCKET_NAME: your-bucket-name-here
-    # Region defaults to "eu-central-1"
-    S3_REGION: "eu-central-1"
-    # if your S3-compatible store does not support requests
-    # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
-    # to true configures the S3 client to make requests like
-    # https://hostname.domain/bucket instead.
-    # Defaults to "false"
-    S3_USE_PATH_STYLE: false
-    # Max payload size for each cache object sent by Turborepo
-    # Defaults to 100 MB
-    # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
-    MAX_PAYLOAD_SIZE_IN_MB: "100"
+    ```yml
+    env:
+      TURBO_API: "http://127.0.0.1:8585"
+      TURBO_TEAM: "NAME_OF_YOUR_REPO_HERE"
+      # The value of TURBO_TOKEN is irrelevant
+      # as we don't perform any auth against the cache server
+      # but it's still necessary for Turborepo
+      TURBO_TOKEN: "turbo-token"
+    ```
 
-# Now you can run your turborepo tasks and rely on the cache server
-# available in the background to provide previously built artifacts (cache hits)
-# and let Turborepo upload new artifacts when there is a cache miss.
-- name: Run tasks
-  run: turbo run test build typecheck
-```
+    > [!NOTE]
+    > These environment variables are required by Turborepo so it can call
+    > the Turbo Cache Server with the right HTTP body, headers and query strings.
+    > These environment variables are necessary so the Turborepo binary can identify
+    > the Remote Cache feature is enabled and can use them across all steps. You can
+    > [read more about this here](https://turbo.build/repo/docs/ci#setup) on the
+    > Turborepo official docs.
+
+
+
+1. In the same workflow file, after checking out your code,
+start the Turbo Cache Server in the background:
+    
+    ```yml
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Turborepo Cache Server
+      uses: brunojppb/turbo-cache-server@1.0.3
+      env:
+        PORT: "8585"
+        S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+        S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+        S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+        S3_BUCKET_NAME: your-bucket-name-here
+        # Region defaults to "eu-central-1"
+        S3_REGION: "eu-central-1"
+        # if your S3-compatible store does not support requests
+        # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
+        # to true configures the S3 client to make requests like
+        # https://hostname.domain/bucket instead.
+        # Defaults to "false"
+        S3_USE_PATH_STYLE: false
+        # Max payload size for each cache object sent by Turborepo
+        # Defaults to 100 MB
+        # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
+        MAX_PAYLOAD_SIZE_IN_MB: "100"
+    
+    # Now you can run your turborepo tasks and rely on the cache server
+    # available in the background to provide previously built artifacts (cache hits)
+    # and let Turborepo upload new artifacts when there is a cache miss.
+    - name: Run tasks
+      run: turbo run test build typecheck
+    ```
 
 And that is all you need to use our remote cache server for Turborepo. As a
 reference, take a look at
@@ -88,8 +91,8 @@ during a cache hit:
 ```mermaid
 sequenceDiagram
     actor A as Developer
-    participant B as Github
-    participant C as Github Actions
+    participant B as GitHub
+    participant C as GitHub Actions
     participant D as Turbo Cache Server
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
@@ -117,8 +120,8 @@ and store the artifacts in S3 as you can see in the following diagram:
 ```mermaid
 sequenceDiagram
     actor A as Developer
-    participant B as Github
-    participant C as Github Actions
+    participant B as GitHub
+    participant C as GitHub Actions
     participant D as Turbo Cache Server
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
