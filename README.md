@@ -27,16 +27,6 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
       TURBO_TOKEN: "turbo-token"
     ```
 
-    > [!NOTE]
-    > These environment variables are required by Turborepo so it can call
-    > the Turbo Cache Server with the right HTTP body, headers and query strings.
-    > These environment variables are necessary so the Turborepo binary can identify
-    > the Remote Cache feature is enabled and can use them across all steps. You can
-    > [read more about this here](https://turbo.build/repo/docs/ci#setup) on the
-    > Turborepo official docs.
-
-
-
 1. In the same workflow file, after checking out your code,
 start the Turbo Cache Server in the background:
     
@@ -76,6 +66,14 @@ And that is all you need to use our remote cache server for Turborepo. As a
 reference, take a look at
 [this example workflow file](https://github.com/brunojppb/turbo-decay/blob/main/.github/workflows/ci.yml)
 for inspiration.
+
+> [!NOTE]
+> These environment variables are required by Turborepo so it can call
+> the Turbo Cache Server with the right HTTP body, headers and query strings.
+> These environment variables are necessary so the Turborepo binary can identify
+> the Remote Cache feature is enabled and can use them across all steps. You can
+> [read more about this here](https://turbo.build/repo/docs/ci#setup) on the
+> Turborepo official docs.
 
 ## How does that work?
 
