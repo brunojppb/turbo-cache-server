@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use actix_web::{
     web::{Bytes, Data, Query},
-    Error, HttpRequest, HttpResponse, Responder,
+    HttpRequest, HttpResponse, Responder,
 };
 use futures::StreamExt;
 use serde::Serialize;
@@ -74,10 +74,19 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         None => return HttpResponse::NotFound().finish(),
     };
 
-    let stream = match storage.get_file(&artifact_info.file_path()).await {
-        Some(response) => response.bytes.map(Result::<Bytes, Error>::Ok),
-        None => return HttpResponse::NotFound().finish(),
+    let Some(response) = storage.get_file(&artifact_info.file_path()).await else {
+        return HttpResponse::NotFound().finish();
     };
+
+    let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
+        Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
+        Err(error) => {
+            tracing::error!(error = error.to_string(), "Chunk stream error");
+            Result::<Bytes, actix_web::error::Error>::Err(actix_web::error::ErrorBadRequest(
+                "Error while streaming artifact",
+            ))
+        }
+    });
 
     HttpResponse::Ok().streaming(stream)
 }
