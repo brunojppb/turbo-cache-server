@@ -8,5 +8,5 @@ WORKDIR /app
 COPY . /app
 # See: https://github.com/rust-lang/rustup/issues/1167#issuecomment-367061388
 RUN rm -frv ~/.rustup/toolchains/*
-RUN rustup update && rustc --version
+RUN rustup show && rustup update && rustc --version
 RUN cargo build --verbose --release
