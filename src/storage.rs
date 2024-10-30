@@ -3,7 +3,7 @@ use s3::{creds::Credentials, request::ResponseDataStream, Bucket, Region};
 use crate::app_settings::AppSettings;
 
 pub struct Storage {
-    bucket: Bucket,
+    bucket: Box<Bucket>,
 }
 
 impl Storage {
