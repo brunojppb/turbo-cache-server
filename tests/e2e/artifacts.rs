@@ -1,9 +1,9 @@
 use wiremock::{
-    matchers::{method, path},
     Mock, ResponseTemplate,
+    matchers::{method, path},
 };
 
-use crate::helpers::{spawn_app, TurboArtifactFileMock};
+use crate::helpers::{TurboArtifactFileMock, spawn_app};
 
 #[tokio::test]
 async fn upload_artifact_to_s3_test() {

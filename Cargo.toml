@@ -1,8 +1,12 @@
 [package]
 name = "decay"
+edition = "2024"
+rust-version = "1.86"
 version = "0.1.0"
 authors = ["Bruno Paulino <hi@bpaulino.com>"]
-edition = "2021"
+license = "MIT"
+repository = "https://github.com/brunojppb/turbo-cache-server"
+readme = "README.md"
 
 [lib]
 path = "src/lib.rs"

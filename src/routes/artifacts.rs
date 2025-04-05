@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use actix_web::{
-    web::{Bytes, Data, Query},
     HttpRequest, HttpResponse, Responder,
+    web::{Bytes, Data, Query},
 };
 use futures::StreamExt;
 use serde::Serialize;
