@@ -1,4 +1,4 @@
-use s3::{creds::Credentials, request::ResponseDataStream, Bucket, Region};
+use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
 
 use crate::app_settings::AppSettings;
 
@@ -41,10 +41,8 @@ impl Storage {
 
     /// Streams the file from the S3 bucket
     pub async fn get_file(&self, path: &str) -> Option<ResponseDataStream> {
-        match self.bucket.get_object_stream(path).await {
-            Ok(file_stream) => Some(file_stream),
-            Err(_) => None,
-        }
+        let maybe_file = self.bucket.get_object_stream(path).await;
+        maybe_file.ok()
     }
 
     /// Stores the given data in the S3 bucket under the given path

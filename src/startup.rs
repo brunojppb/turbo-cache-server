@@ -1,4 +1,4 @@
-use actix_web::{dev::Server, middleware::Logger, web, App, HttpServer};
+use actix_web::{App, HttpServer, dev::Server, middleware::Logger, web};
 use std::net::TcpListener;
 
 use crate::{

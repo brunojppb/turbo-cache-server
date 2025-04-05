@@ -1,12 +1,12 @@
 use std::env;
 
-use tracing::{subscriber::set_global_default, Subscriber};
+use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
+    EnvFilter,
     fmt::{self, MakeWriter},
     layer::SubscriberExt,
-    EnvFilter,
 };
 
 pub fn get_telemetry_subscriber<Sink>(
