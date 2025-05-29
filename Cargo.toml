@@ -2,7 +2,7 @@
 name = "decay"
 edition = "2024"
 rust-version = "1.86"
-version = "0.0.0"
+version = "1.0.18"
 authors = ["Bruno Paulino <hi@bpaulino.com>"]
 license = "MIT"
 repository = "https://github.com/brunojppb/turbo-cache-server"
