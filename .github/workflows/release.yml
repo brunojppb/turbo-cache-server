@@ -28,6 +28,11 @@ jobs:
           echo "Releases should only run from the main branch"
           exit 1
 
+      - name: Update version on Cargo.toml
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ github.event.inputs.semver }}\"/" Cargo.toml
+          cat Cargo.toml
+
       - name: build binary
         run: docker build -t rust_build .
 
