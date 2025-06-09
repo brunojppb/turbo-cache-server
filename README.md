@@ -157,7 +157,7 @@ docker run \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
   -p "8000:8000" \
-  brunojppb/turbo-cache-server
+  ghcr.io/brunojppb/turbo-cache-server
 ```
 
 ## Development
