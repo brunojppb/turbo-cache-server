@@ -63,6 +63,8 @@ jobs:
           git tag -a ${CACHE_SERVER_VERSION} -m "Release ${CACHE_SERVER_VERSION}"
 
       - name: Push new tag
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: git push origin $CACHE_SERVER_VERSION
 
       - name: Build Docker image
