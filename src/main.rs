@@ -17,7 +17,8 @@ async fn main() -> Result<(), std::io::Error> {
     init_telemetry_subscriber(subscriber);
 
     let app_settings = get_settings();
-    let address = format!("127.0.0.1:{}", app_settings.port);
+
+    let address = format!("{}:{}", app_settings.host, app_settings.port);
     let listener = TcpListener::bind(address)?;
 
     decay::startup::run(listener, app_settings)?.await
