@@ -66,6 +66,8 @@ jobs:
         run: git push origin $CACHE_SERVER_VERSION
 
       - name: Build Docker image
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: |
           docker build \
             -t ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION \
