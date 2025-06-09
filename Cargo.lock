@@ -528,7 +528,7 @@ checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
 name = "decay"
-version = "0.0.0"
+version = "1.0.19"
 dependencies = [
  "actix-web",
  "dotenv",
