@@ -3,7 +3,7 @@
 # See: https://users.rust-lang.org/t/unable-to-run-compiled-program/88441/5
 # See: https://github.com/rust-cross/rust-musl-cross
 # See: https://hub.docker.com/layers/messense/rust-musl-cross/x86_64-musl/images/sha256-7ef452f6c731535a716e3f5a5d255fbe9720f35e992c9dee7d477e58542cfaf5?context=explore
-FROM messense/rust-musl-cross@sha256:7ef452f6c731535a716e3f5a5d255fbe9720f35e992c9dee7d477e58542cfaf5 as builder
+FROM messense/rust-musl-cross@sha256:7ef452f6c731535a716e3f5a5d255fbe9720f35e992c9dee7d477e58542cfaf5 AS builder
 WORKDIR /app
 COPY . /app
 # See: https://github.com/rust-lang/rustup/issues/1167#issuecomment-367061388

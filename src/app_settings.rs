@@ -2,6 +2,9 @@ use std::env;
 
 #[derive(Clone)]
 pub struct AppSettings {
+    /// Host where to bind the server to
+    /// Defaults to the loopback address
+    pub host: String,
     pub port: u16,
     /// The maximum size allowed for payloads
     /// uploaded by Turborepo. Defaults to 100MB.
@@ -23,6 +26,8 @@ pub fn get_settings() -> AppSettings {
         .unwrap_or("8000".to_string())
         .parse::<u16>()
         .expect("Could not read PORT from env");
+
+    let host = env::var("HOST").unwrap_or("127.0.0.1".to_owned());
 
     let s3_access_key = env::var("S3_ACCESS_KEY").ok();
     let s3_secret_key = env::var("S3_SECRET_KEY").ok();
@@ -49,6 +54,7 @@ pub fn get_settings() -> AppSettings {
         });
 
     AppSettings {
+        host,
         port,
         max_payload_size_in_bytes,
         s3_access_key,

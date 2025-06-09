@@ -15,7 +15,7 @@ with:
 
 You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
 
-1. In your workflow files, add the following global environment variables:
+1.  In your workflow files, add the following global environment variables:
 
     ```yml
     env:
@@ -27,40 +27,40 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
       TURBO_TOKEN: "turbo-token"
     ```
 
-1. In the same workflow file, after checking out your code,
-start the Turbo Cache Server in the background:
-    
-    ```yml
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Turborepo Cache Server
-      uses: brunojppb/turbo-cache-server@1.0.3
-      env:
-        PORT: "8585"
-        S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-        S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-        S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-        S3_BUCKET_NAME: your-bucket-name-here
-        # Region defaults to "eu-central-1"
-        S3_REGION: "eu-central-1"
-        # if your S3-compatible store does not support requests
-        # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
-        # to true configures the S3 client to make requests like
-        # https://hostname.domain/bucket instead.
-        # Defaults to "false"
-        S3_USE_PATH_STYLE: false
-        # Max payload size for each cache object sent by Turborepo
-        # Defaults to 100 MB
-        # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
-        MAX_PAYLOAD_SIZE_IN_MB: "100"
-    
-    # Now you can run your turborepo tasks and rely on the cache server
-    # available in the background to provide previously built artifacts (cache hits)
-    # and let Turborepo upload new artifacts when there is a cache miss.
-    - name: Run tasks
-      run: turbo run test build typecheck
-    ```
+1.  In the same workflow file, after checking out your code,
+    start the Turbo Cache Server in the background:
+
+    ````yml - name: Checkout repository
+    uses: actions/checkout@v4
+
+        - name: Turborepo Cache Server
+          uses: brunojppb/turbo-cache-server@1.0.3
+          env:
+            PORT: "8585"
+            S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+            S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+            S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+            S3_BUCKET_NAME: your-bucket-name-here
+            # Region defaults to "eu-central-1"
+            S3_REGION: "eu-central-1"
+            # if your S3-compatible store does not support requests
+            # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
+            # to true configures the S3 client to make requests like
+            # https://hostname.domain/bucket instead.
+            # Defaults to "false"
+            S3_USE_PATH_STYLE: false
+            # Max payload size for each cache object sent by Turborepo
+            # Defaults to 100 MB
+            # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
+            MAX_PAYLOAD_SIZE_IN_MB: "100"
+
+        # Now you can run your turborepo tasks and rely on the cache server
+        # available in the background to provide previously built artifacts (cache hits)
+        # and let Turborepo upload new artifacts when there is a cache miss.
+        - name: Run tasks
+          run: turbo run test build typecheck
+        ```
+    ````
 
 And that is all you need to use our remote cache server for Turborepo. As a
 reference, take a look at
@@ -142,6 +142,22 @@ sequenceDiagram
     D-->>-C: Turbo Cache server terminates safely
     C-->>-B: CI pipline complete
     B-->>-A: PR Checks done
+```
+
+## Gitlab support
+
+For folks using Gitlab or any other CI environment that supports Docker,
+you can run the Turbo Cache Server as a docker container:
+
+```shell
+docker run \
+  -e S3_ACCESS_KEY=KEY \
+  -e S3_SECRET_KEY=SECRET \
+  -e S3_BUCKET_NAME=my_cache_bucket \
+  -e S3_ENDPOINT=https://s3_endpoint_here \
+  -e S3_REGION=eu \
+  -p "8000:8000" \
+  ghcr.io/brunojppb/turbo-cache-server
 ```
 
 ## Development
