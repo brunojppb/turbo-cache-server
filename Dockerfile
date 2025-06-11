@@ -13,3 +13,11 @@ RUN rustup show \
   && rustup target add x86_64-unknown-linux-musl \
   && rustc --version
 RUN cargo build --verbose --release
+
+FROM scratch
+
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/decay /usr/bin/decay
+
+ENV HOST="0.0.0.0"
+
+CMD  ["/usr/bin/decay"]

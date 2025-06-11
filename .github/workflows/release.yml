@@ -50,7 +50,7 @@ jobs:
         # leading to a faster pipeline.
       - name: copy binary
         run: |
-          docker cp dist:app/target/x86_64-unknown-linux-musl/release/decay action/decay
+          docker cp dist:/usr/bin/decay action/decay
           chmod +x action/decay
       - name: Commit new binary
         env:
@@ -74,7 +74,7 @@ jobs:
           docker build \
             -t ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION \
             -t ghcr.io/brunojppb/turbo-cache-server:latest \
-            -f prod.Dockerfile .
+            -f Dockerfile .
 
       - name: login to Github Container registry
         uses: docker/login-action@v3
