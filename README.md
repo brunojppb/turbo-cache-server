@@ -1,7 +1,7 @@
 <p align="center"><br><img src="./icon.png" width="128" height="128" alt="Turbo engine" /></p>
 <h2 align="center">Turbo Cache Server</h2>
 <p align="center">
-  <a href="https://turbo.build/repo">Turborepo</a> remote cache server, <a href="https://turbo.build/repo/docs/core-concepts/remote-caching#self-hosting">API-compliant</a> as a GitHub Action with S3-compatible storage support.
+  <a href="https://turbo.build/repo">Turborepo</a> remote cache server, <a href="https://turbo.build/repo/docs/core-concepts/remote-caching#self-hosting">API-compliant</a> as a GitHub Action or Docker with S3-compatible storage support.
 </p>
 
 ### How can I use this in my monorepo?
@@ -75,6 +75,22 @@ for inspiration.
 > [read more about this here](https://turbo.build/repo/docs/ci#setup) on the
 > Turborepo official docs.
 
+## Gitlab support
+
+For folks using Gitlab or any other CI environment that supports Docker,
+you can run the Turbo Cache Server as a docker container:
+
+```shell
+docker run \
+  -e S3_ACCESS_KEY=KEY \
+  -e S3_SECRET_KEY=SECRET \
+  -e S3_BUCKET_NAME=my_cache_bucket \
+  -e S3_ENDPOINT=https://s3_endpoint_here \
+  -e S3_REGION=eu \
+  -p "8000:8000" \
+  ghcr.io/brunojppb/turbo-cache-server
+```
+
 ## How does that work?
 
 Turbo Cache Server is a tiny web server written in
@@ -142,22 +158,6 @@ sequenceDiagram
     D-->>-C: Turbo Cache server terminates safely
     C-->>-B: CI pipline complete
     B-->>-A: PR Checks done
-```
-
-## Gitlab support
-
-For folks using Gitlab or any other CI environment that supports Docker,
-you can run the Turbo Cache Server as a docker container:
-
-```shell
-docker run \
-  -e S3_ACCESS_KEY=KEY \
-  -e S3_SECRET_KEY=SECRET \
-  -e S3_BUCKET_NAME=my_cache_bucket \
-  -e S3_ENDPOINT=https://s3_endpoint_here \
-  -e S3_REGION=eu \
-  -p "8000:8000" \
-  ghcr.io/brunojppb/turbo-cache-server
 ```
 
 ## Development
