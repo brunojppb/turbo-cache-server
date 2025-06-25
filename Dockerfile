@@ -8,9 +8,10 @@ FROM messense/rust-musl-cross:x86_64-musl@sha256:c0154e992adb791c3b848dd008939d1
 WORKDIR /app
 COPY . /app
 # See: https://github.com/rust-lang/rustup/issues/1167#issuecomment-367061388
-RUN rm -frv ~/.rustup/toolchains/*
+RUN rm -frv ~/.rustup
 RUN rustup show \
   && rustup update \
+  && rustup default stable \
   && rustup target add x86_64-unknown-linux-musl \
   && rustc --version
 RUN cargo build --verbose --release
