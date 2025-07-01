@@ -47,10 +47,7 @@ pub fn get_settings() -> AppSettings {
         .parse::<usize>()
         .map(|size_in_mb| size_in_mb * 1024 * 1024)
         .unwrap_or_else(|_| {
-            panic!(
-                "Invalid value given for MAX_PAYLOAD_SIZE_IN_MB: \"{}\"",
-                payload_in_mb
-            )
+            panic!("Invalid value given for MAX_PAYLOAD_SIZE_IN_MB: \"{payload_in_mb}\"",)
         });
 
     AppSettings {
