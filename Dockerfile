@@ -1,4 +1,4 @@
-FROM messense/rust-musl-cross:x86_64-musl@sha256:c0154e992adb791c3b848dd008939d19862549204f8cb26f5ca7a00f629e6067 AS builder
+FROM messense/rust-musl-cross:x86_64-musl@sha256:de2f3518049a4fb5b613b12c0dadc8f1d5ea040146e0903d4918acbcc0536d85 AS builder
 # To make Decay compatible with differnt linux distributions,
 # let's cross-compile using musl so the binary is statically linked with the right dependencies
 # See: https://users.rust-lang.org/t/unable-to-run-compiled-program/88441/5
