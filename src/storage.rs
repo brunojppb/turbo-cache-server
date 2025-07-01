@@ -49,7 +49,7 @@ impl Storage {
     pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
         match self.bucket.put_object(path, data).await {
             Ok(_response) => Ok(()),
-            Err(e) => Err(format!("Could not upload file: {}", e)),
+            Err(e) => Err(format!("Could not upload file: {e}")),
         }
     }
 
