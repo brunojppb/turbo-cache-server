@@ -60,7 +60,6 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
         # and let Turborepo upload new artifacts when there is a cache miss.
         - name: Run tasks
           run: turbo run test build typecheck
-        ```
     ````
 
 And that is all you need to use our remote cache server for Turborepo. As a
