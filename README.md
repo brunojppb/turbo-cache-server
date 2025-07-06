@@ -30,8 +30,9 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
 1.  In the same workflow file, after checking out your code,
     start the Turbo Cache Server in the background:
 
-    ````yml - name: Checkout repository
-        - uses: actions/checkout@v4
+    ````yml
+        - name: Checkout repository
+          uses: actions/checkout@v4
 
         - name: Turborepo Cache Server
           uses: brunojppb/turbo-cache-server@1.0.3
