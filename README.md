@@ -38,13 +38,15 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
           uses: brunojppb/turbo-cache-server@1.0.3
           env:
             PORT: "8585"
-            S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-            S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-            S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
             S3_BUCKET_NAME: your-bucket-name-here
             # Region defaults to "eu-central-1"
             S3_REGION: "eu-central-1"
-            # if your S3-compatible store does not support requests
+            # Optional: If you need to provide specific auth keys, separate from default AWS credentials
+            S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+            S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
+            # Optional: If not using AWS, provide endpoint like `https://minio` for your instance.
+            S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+            # Optional: If your S3-compatible store does not support requests
             # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
             # to true configures the S3 client to make requests like
             # https://hostname.domain/bucket instead.
@@ -60,6 +62,7 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
         # and let Turborepo upload new artifacts when there is a cache miss.
         - name: Run tasks
           run: turbo run test build typecheck
+        ```
     ````
 
 And that is all you need to use our remote cache server for Turborepo. As a
