@@ -13,7 +13,7 @@ const HomePage: React.FC = () => {
                     <div className='pt-20 pb-16 text-center lg:pt-32'>
                         {/* Main Heading */}
                         <h1 className='font-display mx-auto max-w-4xl text-5xl font-medium tracking-tight text-slate-900 sm:text-7xl dark:text-white'>
-                            Turborepo cache server that{' '}
+                            Turborepo remote cache server that{' '}
                             <span className='relative whitespace-nowrap text-blue-600 dark:text-blue-400'>
                                 <svg
                                     aria-hidden='true'
