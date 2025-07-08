@@ -1,3 +1,5 @@
+import { type Metadata } from 'next';
+
 const HomePage: React.FC = () => {
     return (
         <div className='bg-background relative min-h-screen overflow-hidden'>
