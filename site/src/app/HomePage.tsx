@@ -11,7 +11,7 @@ const HomePage: React.FC = () => {
                     <div className='pt-20 pb-16 text-center lg:pt-32'>
                         {/* Main Heading */}
                         <h1 className='font-display mx-auto max-w-4xl text-5xl font-medium tracking-tight text-slate-900 sm:text-7xl dark:text-white'>
-                            Turborepo cache that{' '}
+                            Turborepo cache server that{' '}
                             <span className='relative whitespace-nowrap text-blue-600 dark:text-blue-400'>
                                 <svg
                                     aria-hidden='true'
@@ -166,8 +166,91 @@ const HomePage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Companies Using Section */}
+                <div className='mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8'>
+                    <div className='mx-auto text-center lg:mx-0'>
+                        <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
+                            Folks from the following companies using it
+                        </h2>
+                    </div>
+                    <div className='mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none'>
+                        <div className='grid grid-cols-1 justify-items-center gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
+                            <a
+                                href='https://n26.com'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                <div className='text-center'>
+                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
+                                        N26
+                                    </div>
+                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
+                                        Digital Banking
+                                    </div>
+                                </div>
+                            </a>
+                            <a
+                                href='https://www.lego.com/en-us'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                <div className='text-center'>
+                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
+                                        LEGO
+                                    </div>
+                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
+                                        Creative Play Solutions
+                                    </div>
+                                </div>
+                            </a>
+                            <a
+                                href='https://cursor.com/'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                <div className='text-center'>
+                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
+                                        Cursor
+                                    </div>
+                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
+                                        AI Code Editor
+                                    </div>
+                                </div>
+                            </a>
+                            <a
+                                href='https://amplitude.com/'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                <div className='text-center'>
+                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
+                                        Amplitude
+                                    </div>
+                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
+                                        Product Analytics
+                                    </div>
+                                </div>
+                            </a>
+                            <a
+                                href='https://www.bbc.com/'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                <div className='text-center'>
+                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
+                                        BBC
+                                    </div>
+                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
+                                        Broadcasting & Media
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Deployment Options Section */}
-                <div className='mx-auto max-w-7xl px-4 pt-24 sm:px-6 lg:px-8'>
+                <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
                     <div className='mx-auto text-center lg:mx-0'>
                         <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
                             Two ways to deploy
