@@ -1,4 +1,30 @@
-import { type Metadata } from 'next';
+const companies = [
+    {
+        name: 'N26',
+        url: 'https://n26.com',
+        logo: 'n26-logo.png'
+    },
+    {
+        name: 'Cursor',
+        url: 'https://cursor.com',
+        logo: 'cursor-logo.png'
+    },
+    {
+        name: 'BBC',
+        url: 'https://bbc.com',
+        logo: 'bbc-logo.png'
+    },
+    {
+        name: 'LEGO',
+        url: 'https://lego.com',
+        logo: 'lego-logo.png'
+    },
+    {
+        name: 'Amplitude',
+        url: 'https://amplitude.com',
+        logo: 'amplitude-logo.png'
+    }
+];
 
 const HomePage: React.FC = () => {
     return (
@@ -176,77 +202,22 @@ const HomePage: React.FC = () => {
                         </h2>
                     </div>
                     <div className='mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none'>
-                        <div className='grid grid-cols-1 justify-items-center gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
-                            <a
-                                href='https://n26.com'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                <div className='text-center'>
-                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
-                                        N26
-                                    </div>
-                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
-                                        Digital Banking
-                                    </div>
-                                </div>
-                            </a>
-                            <a
-                                href='https://www.lego.com/en-us'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                <div className='text-center'>
-                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
-                                        LEGO
-                                    </div>
-                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
-                                        Creative Play Solutions
-                                    </div>
-                                </div>
-                            </a>
-                            <a
-                                href='https://cursor.com/'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                <div className='text-center'>
-                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
-                                        Cursor
-                                    </div>
-                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
-                                        AI Code Editor
-                                    </div>
-                                </div>
-                            </a>
-                            <a
-                                href='https://amplitude.com/'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                <div className='text-center'>
-                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
-                                        Amplitude
-                                    </div>
-                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
-                                        Product Analytics
-                                    </div>
-                                </div>
-                            </a>
-                            <a
-                                href='https://www.bbc.com/'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='group flex items-center justify-center rounded-2xl border border-slate-200 p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                <div className='text-center'>
-                                    <div className='text-2xl font-bold text-slate-900 group-hover:text-slate-700 dark:text-white dark:group-hover:text-slate-200'>
-                                        BBC
-                                    </div>
-                                    <div className='mt-2 text-sm text-slate-600 dark:text-slate-400'>
-                                        Broadcasting & Media
-                                    </div>
-                                </div>
-                            </a>
+                        <div className='grid grid-cols-2 md:grid-cols-1 justify-items-center gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
+                            {companies.map((company) => {
+                                return (
+                                    <a
+                                        key={company.name}
+                                        href={company.url}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        className='group flex items-center justify-center rounded-2xl p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                        <div className='text-center'>
+                                            <img src={company.logo} alt={company.name}/>
+
+                                        </div>
+                                    </a>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -347,7 +318,7 @@ jobs:
           S3_REGION: "eu-central-1"
           S3_ACCESS_KEY: \${{ secrets.S3_ACCESS_KEY }}
           S3_SECRET_KEY: \${{ secrets.S3_SECRET_KEY }}
-        
+
           # Optional: If not using AWS, provide endpoint like "https://minio" for your instance.
           S3_ENDPOINT: \${{ secrets.S3_ENDPOINT }}
           # Optional: If your S3-compatible store does not support requests
@@ -360,7 +331,7 @@ jobs:
           # Defaults to 100 MB
           # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
           MAX_PAYLOAD_SIZE_IN_MB: "100"
-      
+
       - name: Run tasks
         run: turbo run test build typecheck`}</code>
                                     </pre>
