@@ -106,7 +106,7 @@ const HomePage: React.FC = () => {
                 </div>
 
                 {/* Companies Using Section */}
-                <div className='mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8'>
+                <div className='mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'>
                     <div className='mx-auto text-center lg:mx-0'>
                         <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
                             Folks from the following companies using it
@@ -222,7 +222,7 @@ const HomePage: React.FC = () => {
                 </div>
 
                 {/* Deployment Options Section */}
-                <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
+                <div className='mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8'>
                     <div className='mx-auto text-center lg:mx-0'>
                         <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
                             Two ways to deploy
