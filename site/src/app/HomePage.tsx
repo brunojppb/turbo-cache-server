@@ -105,6 +105,33 @@ const HomePage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Companies Using Section */}
+                <div className='mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8'>
+                    <div className='mx-auto text-center lg:mx-0'>
+                        <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
+                            Folks from the following companies using it
+                        </h2>
+                    </div>
+                    <div className='mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none'>
+                        <div className='grid grid-cols-2 justify-items-center gap-8 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-3 xl:grid-cols-5'>
+                            {companies.map((company) => {
+                                return (
+                                    <a
+                                        key={company.name}
+                                        href={company.url}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        className='group flex items-center justify-center rounded-2xl p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
+                                        <div className='text-center'>
+                                            <img src={company.logo} alt={company.name} />
+                                        </div>
+                                    </a>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
                 {/* Feature Sections */}
                 <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
                     <div className='mx-auto text-center lg:mx-0'>
@@ -191,34 +218,6 @@ const HomePage: React.FC = () => {
                                 </dd>
                             </div>
                         </dl>
-                    </div>
-                </div>
-
-                {/* Companies Using Section */}
-                <div className='mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8'>
-                    <div className='mx-auto text-center lg:mx-0'>
-                        <h2 className='text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white'>
-                            Folks from the following companies using it
-                        </h2>
-                    </div>
-                    <div className='mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-none'>
-                        <div className='grid grid-cols-2 md:grid-cols-1 justify-items-center gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
-                            {companies.map((company) => {
-                                return (
-                                    <a
-                                        key={company.name}
-                                        href={company.url}
-                                        target='_blank'
-                                        rel='noopener noreferrer'
-                                        className='group flex items-center justify-center rounded-2xl p-8 transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800/50'>
-                                        <div className='text-center'>
-                                            <img src={company.logo} alt={company.name}/>
-
-                                        </div>
-                                    </a>
-                                );
-                            })}
-                        </div>
                     </div>
                 </div>
 
