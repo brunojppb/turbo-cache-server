@@ -22,7 +22,7 @@ jobs:
         run: |
           docker buildx build \
           --platform linux/arm64/v8,linux/amd64 \
-          --tag rust_build .
+          --tag rust_build:latest .
 
       - name: create temp container
         run: docker create --name dist rust_build
