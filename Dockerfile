@@ -26,7 +26,7 @@ RUN cargo zigbuild -r \
 FROM scratch
 WORKDIR /app
 ARG TARGETPLATFORM
-COPY --from=builder /app/${TARGETPLATFORM}/decay /usr/bin/decay
+COPY --from=builder /app/${TARGETPLATFORM} /usr/bin/decay
 
 # Allow the server to bind and be available to the local network
 ENV HOST="0.0.0.0"
