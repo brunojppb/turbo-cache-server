@@ -30,16 +30,16 @@ jobs:
         run: |
           docker pull brunojppb/turbo-cache-server-build:latest
           docker create --name dist_arm64 --platform arm64 brunojppb/turbo-cache-server-build
-          docker create --name dist_amd64 --platform amd64 brunojppb/turbo-cache-server-build
+          docker create --name dist_x64 --platform amd64 brunojppb/turbo-cache-server-build
 
       - name: copy arm64 binary
         run: |
           mkdir out && \
           docker cp dist_arm64:/usr/bin/decay out/decay-arm64
       
-      - name: copy amd64 binary
+      - name: copy x64 binary
         run: |
-          docker cp dist_amd64:/usr/bin/decay out/decay-amd64
+          docker cp dist_x64:/usr/bin/decay out/decay-x64
 
       - uses: actions/upload-artifact@v4
         with:
