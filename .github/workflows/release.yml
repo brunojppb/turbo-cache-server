@@ -36,36 +36,36 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ github.event.inputs.semver }}\"/" Cargo.toml
           cat Cargo.toml
 
-      - name: build binary
-        run: docker build -t rust_build .
+            
+      - name: login to Docker
+        uses: docker/login-action@v3
+        with:
+          username: brunojppb
+          password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: create temp container to copy binary from
-        run: docker create --name dist rust_build
-
-        # Copy binary from the Docker container and put
-        # it within the `action` directory before commiting the new tag.
-        # This makes the binary available directly from the tag
-        # when using this repo as a Github Action, without requiring
-        # an extra binary download from somewhere else (Github Releases?)
-        # leading to a faster pipeline.
-      - name: copy binary
-        run: |
-          docker cp dist:/usr/bin/decay action/decay
-          chmod +x action/decay
-      - name: Commit new binary
+      - name: Build Docker image
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: |
-          git config --global user.name "${GITHUB_ACTOR}"
-          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          git add action/decay
-          git commit -am "Release ${CACHE_SERVER_VERSION}"
-          git tag -a ${CACHE_SERVER_VERSION} -m "Release ${CACHE_SERVER_VERSION}"
-
-      - name: Push new tag
+          docker buildx build --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:$CACHE_SERVER_VERSION --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:release-cache --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest . 
+      
+      - name: create temp containers to copy binaries from
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
-        run: git push origin $CACHE_SERVER_VERSION
+        run: |
+          docker pull brunojppb/turbo-cache-server-build:$CACHE_SERVER_VERSION
+          docker create --name dist_arm64 --platform arm64 brunojppb/turbo-cache-server-build:$CACHE_SERVER_VERSION
+          docker create --name dist_x64 --platform amd64 brunojppb/turbo-cache-server-build:$CACHE_SERVER_VERSION
+
+      - name: copy arm64 binary
+        run: |
+          docker cp dist_arm64:/usr/bin/decay action/decay-arm64
+          chmod +x action/decay-arm64
+      
+      - name: copy x64 binary
+        run: |
+          docker cp dist_x64:/usr/bin/decay action/decay-x64
+          chmod +x action/decay-x64
 
       - name: login to Github Container registry
         uses: docker/login-action@v3
@@ -79,3 +79,19 @@ jobs:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: |
           docker buildx build --platform linux/arm64,linux/amd64 --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
+
+      - name: Commit new binary
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add action/decay-arm64
+          git add action/decay-x64
+          git commit -am "Release ${CACHE_SERVER_VERSION}"
+          git tag -a ${CACHE_SERVER_VERSION} -m "Release ${CACHE_SERVER_VERSION}"
+
+      - name: Push new tag
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+        run: git push origin $CACHE_SERVER_VERSION
