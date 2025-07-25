@@ -78,8 +78,4 @@ jobs:
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: |
-          docker buildx build \
-            --platform linux/arm64/v8,linux/amd64 \ 
-            --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION \
-            --tag ghcr.io/brunojppb/turbo-cache-server:latest \
-            --push .
+          docker buildx build --platform linux/arm64,linux/amd64 --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
