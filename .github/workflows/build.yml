@@ -24,7 +24,8 @@ jobs:
 
       - name: build binary
         run: |
-          docker pull --platform linux/arm64,linux/amd64 brunojppb/turbo-cache-server-build:latest || true
+          docker pull --platform linux/arm64 brunojppb/turbo-cache-server-build:latest || true
+          docker pull --platform linux/amd64 brunojppb/turbo-cache-server-build:latest || true
           docker buildx build --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:latest --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:cache --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest . 
 
       - name: create temp containers to copy binaries from
