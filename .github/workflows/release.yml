@@ -67,15 +67,6 @@ jobs:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: git push origin $CACHE_SERVER_VERSION
 
-      - name: Build Docker image
-        env:
-          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
-        run: |
-          docker build \
-            -t ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION \
-            -t ghcr.io/brunojppb/turbo-cache-server:latest \
-            -f Dockerfile .
-
       - name: login to Github Container registry
         uses: docker/login-action@v3
         with:
@@ -83,9 +74,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: push to Github Container Registry
+      - name: Build Docker image
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: |
-          docker push ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION
-          docker push ghcr.io/brunojppb/turbo-cache-server:latest
+          docker buildx build \
+            --platform linux/arm64/v8,linux/amd64 \ 
+            --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION \
+            --tag ghcr.io/brunojppb/turbo-cache-server:latest \
+            --push .
