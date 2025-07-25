@@ -1,7 +1,5 @@
 name: Build binary
 on:
-  # workflow_dispatch:
-  #   inputs: {}
   pull_request:
 concurrency:
   group: ${{ github.ref }}
@@ -20,10 +18,12 @@ jobs:
 
       - name: build binary
         run: |
-          docker buildx build --platform linux/arm64/v8,linux/amd64 -t rust_build:latest .
+          docker buildx build --platform linux/arm64/v8,linux/amd64 --tag rust_build:latest .
 
       - name: create temp container
-        run: docker create --name dist rust_build
+        run: |
+          docker build -t rust_build .
+          docker create --name dist rust_build
 
       - name: copy binary
         run: |
