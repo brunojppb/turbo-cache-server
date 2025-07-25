@@ -2,6 +2,20 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+const supportedArches = ['arm64', 'x64']
+
+/**
+ * Get the binary name from the current OS Arch.
+ * We only support Linux `arm64` and `amd64` for the moment.
+ */
+export function getBinaryName() {
+  const arch = supportedArches.find(a => os.arch)
+  if (!arch) {
+    throw new Error(`This action does not support this arch='${os.arch}'`)
+  }
+  return `decay-${arch}`
+}
+
 /**
  * Read state value from the Github injected values
  * @param {string} key
