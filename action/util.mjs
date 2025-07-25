@@ -9,7 +9,7 @@ const supportedArches = ['arm64', 'x64']
  * We only support Linux `arm64` and `amd64` for the moment.
  */
 export function getBinaryName() {
-  const arch = supportedArches.find(a => os.arch)
+  const arch = supportedArches.find(supportedArch => os.arch === supportedArch)
   if (!arch) {
     throw new Error(`This action does not support this arch='${os.arch}'`)
   }
