@@ -17,8 +17,12 @@ pub struct TestApp {
     pub bucket_name: String,
 }
 
+pub struct TestAppConfig {
+    pub turbo_token: Option<String>,
+}
+
 #[allow(clippy::let_underscore_future)]
-pub async fn spawn_app() -> TestApp {
+pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
     dotenv().ok();
 
     LazyLock::force(&TRACING);
@@ -33,6 +37,7 @@ pub async fn spawn_app() -> TestApp {
     app_settings.s3_endpoint = Some(storage_server.uri());
     app_settings.s3_use_path_style = true;
     app_settings.s3_bucket_name.clone_from(&bucket_name);
+    app_settings.turbo_token = config.map(|v| v.turbo_token).flatten();
 
     let server = decay::startup::run(listener, app_settings).expect("Could not bind to listener");
     let _ = tokio::spawn(server);

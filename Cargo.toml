@@ -30,6 +30,7 @@ futures = "0.3"
 openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
+pretty_assertions = "1.4.1"
 reqwest = "0.12"
 wiremock = "0.6"
 

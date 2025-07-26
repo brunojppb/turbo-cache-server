@@ -7,7 +7,7 @@ use crate::helpers::{TurboArtifactFileMock, spawn_app};
 
 #[tokio::test]
 async fn upload_artifact_to_s3_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let client = reqwest::Client::new();
     let file_mock = TurboArtifactFileMock::new();
@@ -41,7 +41,7 @@ async fn upload_artifact_to_s3_test() {
 
 #[tokio::test]
 async fn download_artifact_from_s3_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let client = reqwest::Client::new();
     let file_mock = TurboArtifactFileMock::new();
@@ -70,7 +70,7 @@ async fn download_artifact_from_s3_test() {
 
 #[tokio::test]
 async fn list_team_artifacts_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let client = reqwest::Client::new();
 
@@ -85,7 +85,7 @@ async fn list_team_artifacts_test() {
 
 #[tokio::test]
 async fn artifact_exists_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let client = reqwest::Client::new();
     let file_mock = TurboArtifactFileMock::new();
@@ -106,7 +106,7 @@ async fn artifact_exists_test() {
 
 #[tokio::test]
 async fn artifact_does_not_exist_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let client = reqwest::Client::new();
     let file_mock = TurboArtifactFileMock::new();
