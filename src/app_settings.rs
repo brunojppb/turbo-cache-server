@@ -19,6 +19,7 @@ pub struct AppSettings {
     pub s3_use_path_style: bool,
     pub s3_region: String,
     pub s3_bucket_name: String,
+    pub turbo_token: Option<String>,
 }
 
 pub fn get_settings() -> AppSettings {
@@ -50,6 +51,8 @@ pub fn get_settings() -> AppSettings {
             panic!("Invalid value given for MAX_PAYLOAD_SIZE_IN_MB: \"{payload_in_mb}\"",)
         });
 
+    let turbo_token = env::var("TURBO_TOKEN").ok();
+
     AppSettings {
         host,
         port,
@@ -60,5 +63,6 @@ pub fn get_settings() -> AppSettings {
         s3_endpoint,
         s3_bucket_name,
         s3_use_path_style,
+        turbo_token,
     }
 }
