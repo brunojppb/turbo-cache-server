@@ -1,3 +1,6 @@
+FROM alpine:3 AS ca-certificates
+RUN apk add --no-cache ca-certificates
+
 FROM --platform=$BUILDPLATFORM rust:alpine AS chef
 WORKDIR /app
 ENV PKGCONFIG_SYSROOTDIR=/
@@ -27,6 +30,7 @@ FROM scratch
 WORKDIR /app
 ARG TARGETPLATFORM
 COPY --from=builder /app/${TARGETPLATFORM} /usr/bin/decay
+COPY --from=ca-certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Allow the server to bind and be available to the local network
 ENV HOST="0.0.0.0"
