@@ -1,9 +1,9 @@
 FROM --platform=$BUILDPLATFORM rust:alpine AS chef
 WORKDIR /app
 ENV PKGCONFIG_SYSROOTDIR=/
-RUN apk add --no-cache musl-dev openssl-dev zig perl make
-RUN cargo install --locked cargo-zigbuild cargo-chef
-RUN rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+RUN apk add --no-cache musl-dev openssl-dev zig perl make && \
+  cargo install --locked cargo-zigbuild cargo-chef && \
+  rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
 FROM chef AS planner
 COPY . .
