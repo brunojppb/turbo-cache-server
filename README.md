@@ -92,7 +92,7 @@ docker run \
   -e S3_BUCKET_NAME=my_cache_bucket \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
-  -e TURBO_TOKEN=secret-turbo-token
+  -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server
 ```
