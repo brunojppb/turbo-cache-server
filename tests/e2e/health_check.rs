@@ -4,7 +4,7 @@ use crate::helpers::spawn_app;
 
 #[tokio::test]
 async fn health_check_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let response = check_endpoint("/management/health", &app).await;
 
@@ -14,7 +14,7 @@ async fn health_check_test() {
 
 #[tokio::test]
 async fn turborepo_status_check_test() {
-    let app = spawn_app().await;
+    let app = spawn_app(None).await;
 
     let response = check_endpoint("/v8/artifacts/status", &app).await;
 
