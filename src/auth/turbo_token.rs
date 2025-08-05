@@ -21,9 +21,8 @@ pub async fn validate_turbo_token(
             let token = format!("Bearer {token}");
             if token == *header_token {
                 return next.call(req).await.map(|v| v.map_into_boxed_body());
-            } else {
-                return Ok(unauthrorized(req));
             }
+            return Ok(unauthrorized(req));
         }
         (Some(_token), None) => return Ok(unauthrorized(req)),
         _ => {
