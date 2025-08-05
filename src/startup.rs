@@ -24,21 +24,24 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
         .port();
     let app_settings = web::Data::new(app_settings);
     let server = HttpServer::new(move || {
+        let artifacts_scope = web::scope("/v8/artifacts")
+            .route("/status", web::get().to(health_check))
+            .route("", web::post().to(post_list_team_artifacts))
+            .route("/events", web::post().to(post_events))
+            .route("/{hash}", web::put().to(put_file))
+            .route("/{hash}", web::get().to(get_file))
+            .route("/{hash}", web::head().to(head_check_file))
+            .wrap(from_fn(validate_turbo_token));
+
         App::new()
             .wrap(Logger::default())
             .route("/management/health", web::get().to(health_check))
-            .route("/v8/artifacts/status", web::get().to(health_check))
-            .route("/v8/artifacts", web::post().to(post_list_team_artifacts))
-            .route("/v8/artifacts/events", web::post().to(post_events))
-            .route("/v8/artifacts/{hash}", web::put().to(put_file))
-            .route("/v8/artifacts/{hash}", web::get().to(get_file))
-            .route("/v8/artifacts/{hash}", web::head().to(head_check_file))
+            .service(artifacts_scope)
             .app_data(app_settings.clone())
             .app_data(storage.clone())
             .app_data(actix_web::web::PayloadConfig::new(
                 app_settings.max_payload_size_in_bytes,
             ))
-            .wrap(from_fn(validate_turbo_token))
     })
     .listen(listener)?
     .run();

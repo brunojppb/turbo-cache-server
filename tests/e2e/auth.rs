@@ -11,7 +11,7 @@ async fn unauthorized_when_token_header_is_missing() {
     };
     let app = spawn_app(Some(test_app_config)).await;
 
-    let response = check_endpoint("/management/health", &app, None).await;
+    let response = check_endpoint("/v8/artifacts/status", &app, None).await;
 
     assert_eq!(response.status(), 401);
 }
@@ -24,7 +24,7 @@ async fn unauthorized_when_token_header_is_invalid() {
     let app = spawn_app(Some(test_app_config)).await;
 
     let response = check_endpoint(
-        "/management/health",
+        "/v8/artifacts/status",
         &app,
         Some(String::from("invalid-token")),
     )
