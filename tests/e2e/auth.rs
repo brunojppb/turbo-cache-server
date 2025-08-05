@@ -41,7 +41,7 @@ async fn authorized_when_token_header_is_valid() {
     let app = spawn_app(Some(test_app_config)).await;
 
     let response = check_endpoint(
-        "/management/health",
+        "/v8/artifacts/status",
         &app,
         Some(String::from("valid_token")),
     )
