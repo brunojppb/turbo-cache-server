@@ -21,10 +21,8 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
     env:
       TURBO_API: "http://127.0.0.1:8585"
       TURBO_TEAM: "NAME_OF_YOUR_REPO_HERE"
-      # The value of TURBO_TOKEN is irrelevant
-      # as we don't perform any auth against the cache server
-      # but it's still necessary for Turborepo
-      TURBO_TOKEN: "turbo-token"
+      # The value of TURBO_TOKEN will be checked by the cache server
+      TURBO_TOKEN: "secret-turbo-token"
     ```
 
 1.  In the same workflow file, after checking out your code,
@@ -94,6 +92,7 @@ docker run \
   -e S3_BUCKET_NAME=my_cache_bucket \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
+  -e TURBO_TOKEN=secret-turbo-token
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server
 ```
