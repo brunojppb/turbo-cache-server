@@ -25,8 +25,8 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
     let app_settings = web::Data::new(app_settings);
     let server = HttpServer::new(move || {
         let artifacts_scope = web::scope("/v8/artifacts")
-            .route("/status", web::get().to(health_check))
             .route("", web::post().to(post_list_team_artifacts))
+            .route("/status", web::get().to(health_check))
             .route("/events", web::post().to(post_events))
             .route("/{hash}", web::put().to(put_file))
             .route("/{hash}", web::get().to(get_file))
