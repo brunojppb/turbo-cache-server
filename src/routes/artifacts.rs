@@ -134,4 +134,8 @@ pub async fn artifacts_status() -> impl Responder {
         status: "enabled".to_string(),
     };
     HttpResponse::Ok().json(response)
+const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
+
+pub async fn artifacts_status() -> impl Responder {
+    HttpResponse::Ok().json(DUMMY_CACHE_STATUS)
 }
