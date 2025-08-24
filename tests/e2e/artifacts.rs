@@ -142,3 +142,22 @@ async fn mock_s3_head_req(
     .mount(&app.storage_server)
     .await;
 }
+
+#[tokio::test]
+async fn artifacts_status_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{}/v8/artifacts/status", &app.address))
+        .send()
+        .await
+        .unwrap_or_else(|_| panic!("Failed to request /v8/artifacts/status"));
+
+    assert!(response.status().is_success());
+
+    let response_text = response.text().await.unwrap();
+    assert!(response_text.contains("\"status\""));
+    assert!(response_text.contains("\"enabled\""));
+}

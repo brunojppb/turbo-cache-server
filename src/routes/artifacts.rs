@@ -19,6 +19,11 @@ struct PostTeamArtifactsResponse {
     hashes: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct CacheStatus {
+    status: &'static str,
+}
+
 const EMPTY_HASHES: PostTeamArtifactsResponse = PostTeamArtifactsResponse { hashes: vec![] };
 
 /// As of now, we do not need to list all artifacts for a given
@@ -122,4 +127,10 @@ impl ArtifactRequest {
 
         Some(ArtifactRequest { hash, team })
     }
+}
+
+const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
+
+pub async fn artifacts_status() -> impl Responder {
+    HttpResponse::Ok().json(DUMMY_CACHE_STATUS)
 }
