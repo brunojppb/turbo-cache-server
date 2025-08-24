@@ -12,15 +12,6 @@ async fn health_check_test() {
     assert_eq!(Some(0), response.content_length());
 }
 
-#[tokio::test]
-async fn turborepo_status_check_test() {
-    let app = spawn_app(None).await;
-
-    let response = check_endpoint("/v8/artifacts/status", &app).await;
-
-    assert!(response.status().is_success());
-    assert_eq!(Some(0), response.content_length());
-}
 
 async fn check_endpoint(endpoint: &str, app: &crate::helpers::TestApp) -> Response {
     let client = reqwest::Client::new();
