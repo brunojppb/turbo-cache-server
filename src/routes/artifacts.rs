@@ -20,8 +20,8 @@ struct PostTeamArtifactsResponse {
 }
 
 #[derive(Serialize)]
-struct StatusResponse {
-    status: String,
+struct CacheStatus {
+    status: &'static str,
 }
 
 const EMPTY_HASHES: PostTeamArtifactsResponse = PostTeamArtifactsResponse { hashes: vec![] };
