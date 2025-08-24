@@ -156,7 +156,7 @@ async fn artifacts_status_test() {
         .unwrap_or_else(|_| panic!("Failed to request /v8/artifacts/status"));
 
     assert!(response.status().is_success());
-    
+
     let response_text = response.text().await.unwrap();
     assert!(response_text.contains("\"status\""));
     assert!(response_text.contains("\"enabled\""));

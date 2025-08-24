@@ -10,7 +10,8 @@ use crate::{
     app_settings::AppSettings,
     auth::turbo_token::validate_turbo_token,
     routes::{
-        artifacts_status, get_file, head_check_file, health_check, post_events, post_list_team_artifacts, put_file,
+        artifacts_status, get_file, head_check_file, health_check, post_events,
+        post_list_team_artifacts, put_file,
     },
     storage::Storage,
 };
