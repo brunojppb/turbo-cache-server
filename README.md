@@ -37,7 +37,7 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
           # As we don't ship the latest versions of the binary on the main branch
           # PLEASE see the latest versions here: 
           # https://github.com/brunojppb/turbo-cache-server/releases
-          uses: brunojppb/turbo-cache-server@1.0.24
+          uses: brunojppb/turbo-cache-server@2.0.2
           env:
             PORT: "8585"
             S3_BUCKET_NAME: your-bucket-name-here
