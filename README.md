@@ -97,6 +97,79 @@ docker run \
   ghcr.io/brunojppb/turbo-cache-server
 ```
 
+## Managing Cache Storage with Lifecycle Rules
+
+As your cache grows over time, you may want to automatically expire old cache entries to control storage usage and costs. Since Turbo Cache Server uses S3-compatible storage, you can configure bucket lifecycle rules to automatically delete objects after a specified period.
+
+> [!NOTE]
+> Lifecycle rules are configured at the S3 bucket level, not within the Turbo Cache Server itself. This allows you to manage storage independently of the cache server configuration.
+
+### Setting up Object Expiration
+
+Object expiration is based on the last modified time of objects in your bucket. You can configure expiration in two ways:
+
+- **Days**: Objects will be deleted after a specified number of days (most common for a long running cache-server)
+- **Date**: Objects will be deleted on a specific date
+
+### AWS S3 and S3-Compatible Providers
+
+For AWS S3, Cloudflare R2, Minio, and other S3-compatible providers, you can use the AWS CLI to configure lifecycle rules.
+
+#### Expire objects after 30 days
+
+Create a JSON file named `lifecycle.json` with the following content:
+
+```json
+{
+  "Rules": [
+    {
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 30
+      }
+    }
+  ]
+}
+```
+
+Then apply the lifecycle configuration to your bucket:
+
+```shell
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket your-bucket-name \
+  --lifecycle-configuration file://lifecycle.json
+```
+
+#### Expire objects on a specific date
+
+You can also set a specific expiration date:
+
+```json
+{
+  "Rules": [
+    {
+      "Status": "Enabled",
+      "Expiration": {
+        "Date": "2025-12-31T00:00:00Z"
+      }
+    }
+  ]
+}
+```
+
+### Provider-Specific Notes
+
+- **AWS S3**: Full lifecycle management support. See the [AWS S3 Lifecycle documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-expire-general-considerations.html) for advanced options like transitioning to different storage classes.
+- **Cloudflare R2**: Supports S3-compatible lifecycle API. Use the same AWS CLI commands with your R2 endpoint.
+- **Tigris**: Supports object expiration via lifecycle rules. See the [Tigris object expiration documentation](https://www.tigrisdata.com/docs/buckets/objects-expiration/) for details.
+- **Minio**: Supports S3-compatible lifecycle configuration. Use the AWS CLI with your Minio endpoint.
+
+### Important Considerations
+
+- **Lifecycle rules apply to all objects** in the bucket. If you're using the bucket for other purposes, consider using a dedicated bucket for cache storage or add filters to your lifecycle rules.
+- **Expiration is asynchronous**: There may be a delay between the expiration date and when objects are actually removed.
+- **Versioning**: If your bucket has versioning enabled, expiration rules apply only to current object versions. You may need separate rules for noncurrent versions.
+
 ## How does that work?
 
 Turbo Cache Server is a tiny web server written in
