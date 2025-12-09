@@ -35,7 +35,7 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
         - name: Turborepo Cache Server
           # ALWAYS use a pinned version of the action
           # As we don't ship the latest versions of the binary on the main branch
-          # PLEASE see the latest versions here: 
+          # PLEASE see the latest versions here:
           # https://github.com/brunojppb/turbo-cache-server/releases
           uses: brunojppb/turbo-cache-server@2.0.2
           env:
@@ -95,6 +95,194 @@ docker run \
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server
+```
+
+## Deploying to Kubernetes
+
+Turbo Cache Server is a cloud-native, stateless application that runs seamlessly in Kubernetes environments. This makes it ideal for horizontally scaled deployments across multiple pods.
+
+### Prerequisites
+
+- A Kubernetes cluster (v1.20 or higher recommended)
+- `kubectl` configured to access your cluster
+- An S3-compatible storage bucket configured
+- S3 credentials stored as Kubernetes secrets
+
+### Minimal Deployment Configuration
+
+Below is a minimal setup to deploy Turbo Cache Server to your Kubernetes cluster:
+
+#### 1. Create a Secret for S3 Credentials
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: turbo-cache-s3-credentials
+  namespace: default
+type: Opaque
+stringData:
+  S3_ACCESS_KEY: "your-access-key-here"
+  S3_SECRET_KEY: "your-secret-key-here"
+  TURBO_TOKEN: "secret-turbo-token"
+```
+
+Apply the secret:
+
+```shell
+kubectl apply -f turbo-cache-secret.yaml
+```
+
+#### 2. Create a Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: turbo-cache-server
+  namespace: default
+spec:
+  replicas: 2 # Scale horizontally as needed
+  selector:
+    matchLabels:
+      app: turbo-cache-server
+  template:
+    metadata:
+      labels:
+        app: turbo-cache-server
+    spec:
+      containers:
+        - name: turbo-cache-server
+          image: ghcr.io/brunojppb/turbo-cache-server:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: PORT
+              value: "8000"
+            - name: S3_BUCKET_NAME
+              value: "your-bucket-name-here"
+            - name: S3_REGION
+              value: "eu-central-1"
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: turbo-cache-s3-credentials
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: turbo-cache-s3-credentials
+                  key: S3_SECRET_KEY
+            - name: TURBO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: turbo-cache-s3-credentials
+                  key: TURBO_TOKEN
+            - name: S3_ENDPOINT
+              value: "https://your-s3-endpoint.com"
+            - name: MAX_PAYLOAD_SIZE_IN_MB
+              value: "100"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /management/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /management/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+```
+
+Apply the deployment:
+
+```shell
+kubectl apply -f turbo-cache-deployment.yaml
+```
+
+#### 3. Create a Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: turbo-cache-server
+  namespace: default
+spec:
+  selector:
+    app: turbo-cache-server
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+```
+
+Apply the service:
+
+```shell
+kubectl apply -f turbo-cache-service.yaml
+```
+
+#### 4. (Optional) Create an Ingress
+
+If you need to expose the service externally:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: turbo-cache-ingress
+  namespace: default
+  annotations:
+    # Configure based on your ingress controller
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: turbo.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: turbo-cache-server
+                port:
+                  number: 8000
+```
+
+Apply the ingress:
+
+```shell
+kubectl apply -f turbo-cache-ingress.yaml
+```
+
+### Configuring Turborepo
+
+Once deployed, configure your Turborepo clients to use the Kubernetes service:
+
+```shell
+export TURBO_API="http://turbo-cache-server.default.svc.cluster.local:8000"
+export TURBO_TEAM="your-team-name"
+export TURBO_TOKEN="secret-turbo-token"
+```
+
+For external access through ingress:
+
+```shell
+export TURBO_API="https://turbo.yourdomain.com"
+export TURBO_TEAM="your-team-name"
+export TURBO_TOKEN="secret-turbo-token"
 ```
 
 ## Managing Cache Storage with Lifecycle Rules
