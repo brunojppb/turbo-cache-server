@@ -19,6 +19,8 @@ pub struct AppSettings {
     pub s3_use_path_style: bool,
     pub s3_region: String,
     pub s3_bucket_name: String,
+    /// The server-side encryption algorithm to use for the S3 bucket.
+    pub s3_server_side_encryption: Option<String>,
     pub turbo_token: Option<String>,
 }
 
@@ -37,6 +39,7 @@ pub fn get_settings() -> AppSettings {
     let s3_use_path_style = env::var("S3_USE_PATH_STYLE")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
+    let s3_server_side_encryption = env::var("S3_SERVER_SIDE_ENCRYPTION").ok();
 
     // by default,we scope Turborepo artifacts using the "TURBO_TEAM" name sent by turborepo
     // which creates a folder within the S3 bucket and uploads everything under that.
@@ -63,6 +66,7 @@ pub fn get_settings() -> AppSettings {
         s3_endpoint,
         s3_bucket_name,
         s3_use_path_style,
+        s3_server_side_encryption,
         turbo_token,
     }
 }

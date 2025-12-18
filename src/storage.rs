@@ -4,6 +4,7 @@ use crate::app_settings::AppSettings;
 
 pub struct Storage {
     bucket: Box<Bucket>,
+    server_side_encryption: Option<String>,
 }
 
 impl Storage {
@@ -36,7 +37,10 @@ impl Storage {
             bucket.set_path_style()
         }
 
-        Self { bucket }
+        Self {
+            bucket,
+            server_side_encryption: settings.s3_server_side_encryption.clone(),
+        }
     }
 
     /// Streams the file from the S3 bucket
@@ -47,7 +51,19 @@ impl Storage {
 
     /// Stores the given data in the S3 bucket under the given path
     pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
-        match self.bucket.put_object(path, data).await {
+        let response = match &self.server_side_encryption {
+            Some(encryption) => {
+                self.bucket
+                    .put_object_builder(path, data)
+                    .with_server_side_encryption(encryption)
+                    .unwrap()
+                    .execute()
+                    .await
+            }
+            None => self.bucket.put_object(path, data).await,
+        };
+
+        match response {
             Ok(_response) => Ok(()),
             Err(e) => Err(format!("Could not upload file: {e}")),
         }
