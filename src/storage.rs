@@ -1,10 +1,10 @@
 use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
 
-use crate::app_settings::AppSettings;
+use crate::app_settings::{AppSettings, S3ServerSideEncryption};
 
 pub struct Storage {
     bucket: Box<Bucket>,
-    server_side_encryption: Option<String>,
+    server_side_encryption: Option<S3ServerSideEncryption>,
 }
 
 impl Storage {
@@ -39,7 +39,7 @@ impl Storage {
 
         Self {
             bucket,
-            server_side_encryption: settings.s3_server_side_encryption.clone(),
+            server_side_encryption: settings.s3_server_side_encryption,
         }
     }
 
@@ -51,12 +51,12 @@ impl Storage {
 
     /// Stores the given data in the S3 bucket under the given path
     pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
-        let response = match &self.server_side_encryption {
+        let response = match self.server_side_encryption {
             Some(encryption) => {
                 self.bucket
                     .put_object_builder(path, data)
                     .with_server_side_encryption(encryption)
-                    .unwrap()
+                    .expect("Invalid server-side encryption header value")
                     .execute()
                     .await
             }
