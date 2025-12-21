@@ -1,4 +1,58 @@
 use std::env;
+use std::fmt;
+use std::str::FromStr;
+
+/// Server-side encryption algorithms supported by AWS S3.
+/// See: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum S3ServerSideEncryption {
+    Aes256,
+    AwsFsx,
+    AwsKms,
+    AwsKmsDsse,
+}
+
+impl S3ServerSideEncryption {
+    /// Returns the string value expected by the S3 API
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Aes256 => "AES256",
+            Self::AwsFsx => "aws:fsx",
+            Self::AwsKms => "aws:kms",
+            Self::AwsKmsDsse => "aws:kms:dsse",
+        }
+    }
+}
+
+impl AsRef<str> for S3ServerSideEncryption {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for S3ServerSideEncryption {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for S3ServerSideEncryption {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "AES256" => Ok(Self::Aes256),
+            "aws:fsx" => Ok(Self::AwsFsx),
+            "aws:kms" => Ok(Self::AwsKms),
+            "aws:kms:dsse" => Ok(Self::AwsKmsDsse),
+            _ => Err(format!(
+                "Invalid S3 server-side encryption value: '{}'. \
+                 Valid values are: AES256, aws:fsx, aws:kms, aws:kms:dsse",
+                s
+            )),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct AppSettings {
@@ -19,6 +73,8 @@ pub struct AppSettings {
     pub s3_use_path_style: bool,
     pub s3_region: String,
     pub s3_bucket_name: String,
+    /// The server-side encryption algorithm to use for the S3 bucket.
+    pub s3_server_side_encryption: Option<S3ServerSideEncryption>,
     pub turbo_token: Option<String>,
 }
 
@@ -37,6 +93,10 @@ pub fn get_settings() -> AppSettings {
     let s3_use_path_style = env::var("S3_USE_PATH_STYLE")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
+    let s3_server_side_encryption = env::var("S3_SERVER_SIDE_ENCRYPTION").ok().map(|v| {
+        v.parse::<S3ServerSideEncryption>()
+            .expect("Invalid S3_SERVER_SIDE_ENCRYPTION value")
+    });
 
     // by default,we scope Turborepo artifacts using the "TURBO_TEAM" name sent by turborepo
     // which creates a folder within the S3 bucket and uploads everything under that.
@@ -63,6 +123,77 @@ pub fn get_settings() -> AppSettings {
         s3_endpoint,
         s3_bucket_name,
         s3_use_path_style,
+        s3_server_side_encryption,
         turbo_token,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_aes256_encryption() {
+        let result = "AES256".parse::<S3ServerSideEncryption>();
+        assert_eq!(result, Ok(S3ServerSideEncryption::Aes256));
+    }
+
+    #[test]
+    fn parse_aws_fsx_encryption() {
+        let result = "aws:fsx".parse::<S3ServerSideEncryption>();
+        assert_eq!(result, Ok(S3ServerSideEncryption::AwsFsx));
+    }
+
+    #[test]
+    fn parse_aws_kms_encryption() {
+        let result = "aws:kms".parse::<S3ServerSideEncryption>();
+        assert_eq!(result, Ok(S3ServerSideEncryption::AwsKms));
+    }
+
+    #[test]
+    fn parse_aws_kms_dsse_encryption() {
+        let result = "aws:kms:dsse".parse::<S3ServerSideEncryption>();
+        assert_eq!(result, Ok(S3ServerSideEncryption::AwsKmsDsse));
+    }
+
+    #[test]
+    fn parse_invalid_encryption_returns_error() {
+        let result = "invalid".parse::<S3ServerSideEncryption>();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Invalid S3 server-side encryption value")
+        );
+    }
+
+    #[test]
+    fn encryption_to_string_aes256() {
+        assert_eq!(S3ServerSideEncryption::Aes256.to_string(), "AES256");
+    }
+
+    #[test]
+    fn encryption_to_string_aws_fsx() {
+        assert_eq!(S3ServerSideEncryption::AwsFsx.to_string(), "aws:fsx");
+    }
+
+    #[test]
+    fn encryption_to_string_aws_kms() {
+        assert_eq!(S3ServerSideEncryption::AwsKms.to_string(), "aws:kms");
+    }
+
+    #[test]
+    fn encryption_to_string_aws_kms_dsse() {
+        assert_eq!(
+            S3ServerSideEncryption::AwsKmsDsse.to_string(),
+            "aws:kms:dsse"
+        );
+    }
+
+    #[test]
+    fn encryption_as_ref_str() {
+        let encryption = S3ServerSideEncryption::Aes256;
+        let s: &str = encryption.as_ref();
+        assert_eq!(s, "AES256");
     }
 }

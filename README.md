@@ -54,6 +54,9 @@ You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
             # https://hostname.domain/bucket instead.
             # Defaults to "false"
             S3_USE_PATH_STYLE: false
+            # Optional: Enable server-side encryption for stored artifacts.
+            # Valid values: AES256, aws:kms, aws:kms:dsse, aws:fsx
+            S3_SERVER_SIDE_ENCRYPTION: "AES256"
             # Max payload size for each cache object sent by Turborepo
             # Defaults to 100 MB
             # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
@@ -92,6 +95,7 @@ docker run \
   -e S3_BUCKET_NAME=my_cache_bucket \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
+  -e S3_SERVER_SIDE_ENCRYPTION=AES256 \
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server
@@ -181,6 +185,8 @@ spec:
                   key: TURBO_TOKEN
             - name: S3_ENDPOINT
               value: "https://your-s3-endpoint.com"
+            - name: S3_SERVER_SIDE_ENCRYPTION
+              value: "AES256"
             - name: MAX_PAYLOAD_SIZE_IN_MB
               value: "100"
           resources:
