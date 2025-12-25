@@ -4,6 +4,12 @@
   <a href="https://turbo.build/repo">Turborepo</a> remote cache server, <a href="https://turbo.build/repo/docs/core-concepts/remote-caching#self-hosting">API-compliant</a> as a GitHub Action or Docker with S3-compatible storage support.
 </p>
 
+## Used by folks at
+
+<div>
+  <img src="used_by.png"/>
+</div>
+
 ### How can I use this in my monorepo?
 
 Make sure that you have an S3-compatible storage available. We currently tested
