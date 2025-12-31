@@ -31,7 +31,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
-reqwest = "0.12"
+reqwest = "0.13"
 wiremock = "0.6"
 
 
