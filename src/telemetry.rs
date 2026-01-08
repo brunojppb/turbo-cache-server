@@ -1,7 +1,7 @@
 use std::{env, time::Duration};
 
 use opentelemetry::{KeyValue, trace::TracerProvider};
-use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{MetricExporter, SpanExporter};
 use opentelemetry_sdk::metrics::{SdkMeterProvider, periodic_reader_with_async_runtime};
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, span_processor_with_async_runtime};
 use opentelemetry_sdk::{Resource, runtime};
@@ -43,7 +43,6 @@ where
 
     let span_exporter = SpanExporter::builder()
         .with_tonic()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
         .build()
         .expect("Could not create tracer");
 
@@ -55,7 +54,6 @@ where
 
     let metrics_exporter = MetricExporter::builder()
         .with_tonic()
-        .with_protocol(opentelemetry_otlp::Protocol::HttpJson)
         .build()
         .expect("could not create Metrics exporter");
 
