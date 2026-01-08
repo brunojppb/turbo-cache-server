@@ -38,7 +38,7 @@ pub async fn post_list_team_artifacts(req: HttpRequest) -> impl Responder {
     HttpResponse::Ok().json(&EMPTY_HASHES)
 }
 
-#[tracing::instrument(name = "Check artifact presence", skip(req, storage))]
+#[tracing::instrument(name = "Check artifact", skip(req, storage))]
 pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(&req) {
         Some(info) => info,
@@ -51,7 +51,7 @@ pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl R
     }
 }
 
-#[tracing::instrument(name = "Store turbo artifact", skip(storage, body))]
+#[tracing::instrument(name = "Store artifact", skip(storage, body))]
 pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(&req) {
         Some(info) => info,
@@ -72,7 +72,7 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
     }
 }
 
-#[tracing::instrument(name = "Read turbo artifact", skip(storage))]
+#[tracing::instrument(name = "Read artifact", skip(storage))]
 pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(&req) {
         Some(info) => info,

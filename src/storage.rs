@@ -2,6 +2,7 @@ use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
 
+#[derive(Debug)]
 pub struct Storage {
     bucket: Box<Bucket>,
     server_side_encryption: Option<S3ServerSideEncryption>,
@@ -44,12 +45,14 @@ impl Storage {
     }
 
     /// Streams the file from the S3 bucket
+    #[tracing::instrument(name = "get S3 file")]
     pub async fn get_file(&self, path: &str) -> Option<ResponseDataStream> {
         let maybe_file = self.bucket.get_object_stream(path).await;
         maybe_file.ok()
     }
 
     /// Stores the given data in the S3 bucket under the given path
+    #[tracing::instrument(name = "put S3 file")]
     pub async fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
         let response = match self.server_side_encryption {
             Some(encryption) => {
@@ -70,6 +73,7 @@ impl Storage {
     }
 
     /// Checks whether the given file path exists on the S3 bucket
+    #[tracing::instrument(name = "check if S3 file exists")]
     pub async fn file_exists(&self, path: &str) -> bool {
         self.bucket.head_object(path).await.is_ok()
     }
