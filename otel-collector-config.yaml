@@ -1,0 +1,36 @@
+# This companion file is required by the otel collector to configure
+# the exporters and receivers when running the OTel docker containers.
+# The configuration is written in YAML format and is mounted into
+# the container at /etc/otelcol/config.yaml.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  otlphttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+
+extensions:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/prometheus]

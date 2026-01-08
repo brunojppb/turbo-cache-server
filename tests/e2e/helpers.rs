@@ -52,13 +52,16 @@ pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
 
 static TRACING: LazyLock<()> = LazyLock::new(|| {
     let subscriber_name = "test";
+    let version = "0.0.0";
     let filter_level = String::from("debug");
 
     if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_telemetry_subscriber(subscriber_name, filter_level, std::io::stdout);
+        let subscriber =
+            get_telemetry_subscriber(subscriber_name, version, filter_level, std::io::stdout);
         init_telemetry_subscriber(subscriber);
     } else {
-        let subscriber = get_telemetry_subscriber(subscriber_name, filter_level, std::io::sink);
+        let subscriber =
+            get_telemetry_subscriber(subscriber_name, version, filter_level, std::io::sink);
         init_telemetry_subscriber(subscriber);
     }
 });

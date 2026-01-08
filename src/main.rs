@@ -6,6 +6,7 @@ use decay::{
 };
 
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -13,7 +14,8 @@ async fn main() -> Result<(), std::io::Error> {
 
     // Initialise our logger and telemetry stack
     // for entire lifecycle of our web server
-    let subscriber = get_telemetry_subscriber(PKG_NAME, "info".into(), std::io::stdout);
+    let subscriber =
+        get_telemetry_subscriber(PKG_NAME, PKG_VERSION, "info".into(), std::io::stdout);
     init_telemetry_subscriber(subscriber);
 
     let app_settings = get_settings();

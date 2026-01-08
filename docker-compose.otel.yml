@@ -1,0 +1,43 @@
+name: "turbo_cache_server_otel"
+
+services:
+  s3_bucket:
+    image: minio/minio:RELEASE.2025-02-18T16-25-55Z@sha256:1df91be8d6a6146001cd6be2569a12785a8ece583b511f56ebed08f1e65d3611
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio12345
+    volumes:
+      - s3_data:/data
+    command: server /data --console-address ":9001"
+
+  # Observability
+  collector:
+    image: otel/opentelemetry-collector:0.143.1@sha256:e38787c822875f4afe459a4e4b798b0cbfb7372669f06643ad293793d25762ce
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317" # OTELP GRPC
+      - "4318:4318" # OTELP HTTP
+
+  prometheus:
+    image: prom/prometheus:v3.9.1@sha256:1f0f50f06acaceb0f5670d2c8a658a599affe7b0d8e78b898c1035653849a702
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    ports:
+      - "9090:9090"
+
+  jaeger:
+    image: jaegertracing/jaeger:2.14.1@sha256:39317a963b8006d0664bb1fc4c0bbdbf7cb9dcd20b9b57c23b6ebc09ab4f3cd6
+    ports:
+      - "4317" # OTELP GRPC
+      - "4318" # OTELP HTTP
+      - "16686:16686" # Jaeger UI
+
+volumes:
+  s3_data:
+  
