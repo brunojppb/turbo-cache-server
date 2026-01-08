@@ -370,6 +370,79 @@ You can also set a specific expiration date:
 - **Expiration is asynchronous**: There may be a delay between the expiration date and when objects are actually removed.
 - **Versioning**: If your bucket has versioning enabled, expiration rules apply only to current object versions. You may need separate rules for noncurrent versions.
 
+## OpenTelemetry Support
+
+Turbo Cache Server includes built-in support for [OpenTelemetry](https://opentelemetry.io/), providing distributed tracing and metrics collection out of the box. This enables you to monitor your cache server's performance and troubleshoot issues using industry-standard observability tools.
+
+### Features
+
+- **Distributed Tracing**: Track request flows through your cache server with detailed span data
+- **Metrics Collection**: Monitor performance metrics like request rates, latencies, and cache hit/miss ratios
+- **OTLP Export**: Supports both gRPC and HTTP protocols for exporting telemetry data
+- **Industry Standard**: Compatible with any OpenTelemetry-compliant backend
+
+### Service Identification
+
+All traces and metrics are tagged with the service name **`decay`** (the internal Rust crate name). You'll see this identifier in your observability platform when filtering or querying telemetry data.
+
+### Supported Platforms
+
+The OpenTelemetry integration works with all major observability SaaS platforms and open-source tools:
+
+- **Commercial Platforms**: [Datadog](https://www.datadoghq.com/), [New Relic](https://newrelic.com/), [Honeycomb](https://www.honeycomb.io/), [Lightstep](https://lightstep.com/), [Dynatrace](https://www.dynatrace.com/)
+- **Open Source**: [Jaeger](https://www.jaegertracing.io/), [Prometheus](https://prometheus.io/), [Grafana Tempo](https://grafana.com/oss/tempo/), [Zipkin](https://zipkin.io/)
+
+### Configuration
+
+To enable OpenTelemetry export, set the following environment variables:
+
+```shell
+# OTLP endpoint (gRPC by default)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+
+# Or use HTTP protocol
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+```
+
+For platform-specific configurations:
+
+#### Datadog
+
+```shell
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://api.datadoghq.com"
+export OTEL_EXPORTER_OTLP_HEADERS="dd-api-key=<your-api-key>"
+```
+
+#### Honeycomb
+
+```shell
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://api.honeycomb.io"
+export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=<your-api-key>"
+```
+
+### Local Development
+
+For local testing, you can use the provided Docker Compose setup that includes Jaeger and Prometheus:
+
+```shell
+docker-compose -f docker-compose.otel.yml up
+```
+
+This starts:
+- **Jaeger UI**: http://localhost:16686 (trace visualization)
+- **Prometheus**: http://localhost:9090 (metrics storage and queries)
+- **OpenTelemetry Collector**: Receives and routes telemetry data
+
+Then run your cache server with:
+
+```shell
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+cargo run
+```
+
+Visit Jaeger to see distributed traces and Prometheus to query metrics from your local cache server.
+
 ## How does that work?
 
 Turbo Cache Server is a tiny web server written in
