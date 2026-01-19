@@ -131,7 +131,6 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
         [
             KeyValue::new(SERVICE_NAME, name.to_owned()),
             KeyValue::new(SERVICE_VERSION, version.to_owned()),
-            KeyValue::new("turbo.repo", get_repo_name()),
         ]
     };
 
@@ -203,11 +202,4 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
         _memory_gauge: memory_gauge,
         _virtual_memory_gauge: virtual_memory_gauge,
     }
-}
-
-// Using the default Github Actions environment variables
-// we should be able to know which repo triggered our action
-// See: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/store-information-in-variables#default-environment-variables
-fn get_repo_name() -> String {
-    env::var("GITHUB_REPOSITORY").unwrap_or("not_provided".to_owned())
 }
