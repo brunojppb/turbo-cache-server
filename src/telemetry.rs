@@ -138,7 +138,7 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
     let system_cpu = Arc::clone(&system);
     let cpu_gauge = meter
         .f64_observable_gauge("system.cpu.utilization")
-        .with_description("CPU utilization of the Sake process")
+        .with_description("CPU utilization of the Decay process")
         .with_unit("%")
         .with_callback(move |observer| {
             let mut sys = system_cpu.lock().unwrap();
@@ -159,7 +159,7 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
     let system_mem = Arc::clone(&system);
     let memory_gauge = meter
         .u64_observable_gauge("system.memory.usage")
-        .with_description("Memory usage of the Sake process in bytes")
+        .with_description("Memory usage of the Decay process in bytes")
         .with_unit("bytes")
         .with_callback(move |observer| {
             let mut sys = system_mem.lock().unwrap();
@@ -180,7 +180,7 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
     let system_vmem = Arc::clone(&system);
     let virtual_memory_gauge = meter
         .u64_observable_gauge("system.memory.virtual")
-        .with_description("Virtual memory usage of the Sake process in bytes")
+        .with_description("Virtual memory usage of the Decay process in bytes")
         .with_unit("bytes")
         .with_callback(move |observer| {
             let mut sys = system_vmem.lock().unwrap();
