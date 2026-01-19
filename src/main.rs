@@ -2,7 +2,7 @@ use std::net::TcpListener;
 
 use decay::{
     app_settings::get_settings,
-    telemetry::{get_telemetry_subscriber, init_telemetry_subscriber},
+    telemetry::{get_telemetry_subscriber, init_system_metrics, init_telemetry_subscriber},
 };
 
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
@@ -17,6 +17,11 @@ async fn main() -> Result<(), std::io::Error> {
     let subscriber =
         get_telemetry_subscriber(PKG_NAME, PKG_VERSION, "info".into(), std::io::stdout);
     init_telemetry_subscriber(subscriber);
+
+    // Initialize system metrics collection (CPU, RAM)
+    // This must be called after the meter provider is set globally
+    // The returned SystemMetrics struct must be kept alive for the application lifetime
+    let _system_metrics = init_system_metrics(PKG_NAME, PKG_VERSION);
 
     let app_settings = get_settings();
 

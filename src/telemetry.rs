@@ -1,11 +1,14 @@
+use std::sync::{Arc, Mutex};
 use std::{env, time::Duration};
 
+use opentelemetry::metrics::ObservableGauge;
 use opentelemetry::{KeyValue, trace::TracerProvider};
 use opentelemetry_otlp::{MetricExporter, SpanExporter};
 use opentelemetry_sdk::metrics::{SdkMeterProvider, periodic_reader_with_async_runtime};
 use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, span_processor_with_async_runtime};
 use opentelemetry_sdk::{Resource, runtime};
-use opentelemetry_semantic_conventions::resource::SERVICE_VERSION;
+use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
+use sysinfo::{Pid, ProcessRefreshKind, System};
 use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
@@ -105,4 +108,98 @@ fn get_resource(service_name: &str, version: &str) -> Resource {
 pub fn init_telemetry_subscriber(subscriber: impl Subscriber + Send + Sync) {
     LogTracer::init().expect("Could not set logger");
     set_global_default(subscriber).expect("Failed to set subscriber");
+}
+
+/// Holds the system metric gauge instances to keep them alive
+/// for the duration of the application lifecycle
+pub struct SystemMetrics {
+    _cpu_gauge: ObservableGauge<f64>,
+    _memory_gauge: ObservableGauge<u64>,
+    _virtual_memory_gauge: ObservableGauge<u64>,
+}
+
+/// Initialize system metrics (CPU, RAM) using OpenTelemetry gauges.
+/// This should be called after the meter provider has been set globally.
+/// Returns a SystemMetrics struct that must be kept alive for the application's lifetime.
+pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemMetrics {
+    let meter = opentelemetry::global::meter(name);
+    let system = Arc::new(Mutex::new(System::new_all()));
+    let current_pid = Pid::from_u32(std::process::id());
+
+    // Generate standard tags for all gauge events
+    let generate_tags = || {
+        [
+            KeyValue::new(SERVICE_NAME, name.to_owned()),
+            KeyValue::new(SERVICE_VERSION, version.to_owned()),
+        ]
+    };
+
+    // CPU Usage Gauge (percentage)
+    let system_cpu = Arc::clone(&system);
+    let cpu_gauge = meter
+        .f64_observable_gauge("system.cpu.utilization")
+        .with_description("CPU utilization of the Decay process")
+        .with_unit("%")
+        .with_callback(move |observer| {
+            let mut sys = system_cpu.lock().unwrap();
+            sys.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::Some(&[current_pid]),
+                false,
+                ProcessRefreshKind::nothing().with_cpu(),
+            );
+
+            if let Some(process) = sys.process(current_pid) {
+                let cpu_usage = process.cpu_usage();
+                observer.observe(cpu_usage as f64, &generate_tags());
+            }
+        })
+        .build();
+
+    // Memory Usage Gauge (bytes)
+    let system_mem = Arc::clone(&system);
+    let memory_gauge = meter
+        .u64_observable_gauge("system.memory.usage")
+        .with_description("Memory usage of the Decay process in bytes")
+        .with_unit("bytes")
+        .with_callback(move |observer| {
+            let mut sys = system_mem.lock().unwrap();
+            sys.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::Some(&[current_pid]),
+                false,
+                ProcessRefreshKind::nothing().with_memory(),
+            );
+
+            if let Some(process) = sys.process(current_pid) {
+                let memory_bytes = process.memory();
+                observer.observe(memory_bytes, &generate_tags());
+            }
+        })
+        .build();
+
+    // Virtual Memory Usage Gauge (bytes)
+    let system_vmem = Arc::clone(&system);
+    let virtual_memory_gauge = meter
+        .u64_observable_gauge("system.memory.virtual")
+        .with_description("Virtual memory usage of the Decay process in bytes")
+        .with_unit("bytes")
+        .with_callback(move |observer| {
+            let mut sys = system_vmem.lock().unwrap();
+            sys.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::Some(&[current_pid]),
+                false,
+                ProcessRefreshKind::nothing().with_memory(),
+            );
+
+            if let Some(process) = sys.process(current_pid) {
+                let virtual_memory_bytes = process.virtual_memory();
+                observer.observe(virtual_memory_bytes, &generate_tags());
+            }
+        })
+        .build();
+
+    SystemMetrics {
+        _cpu_gauge: cpu_gauge,
+        _memory_gauge: memory_gauge,
+        _virtual_memory_gauge: virtual_memory_gauge,
+    }
 }

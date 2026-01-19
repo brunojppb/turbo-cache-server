@@ -668,6 +668,7 @@ dependencies = [
  "reqwest 0.13.1",
  "rust-s3",
  "serde",
+ "sysinfo",
  "tokio",
  "tonic",
  "tracing",

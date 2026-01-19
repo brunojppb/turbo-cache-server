@@ -100,7 +100,7 @@ async fn artifact_exists_test() {
         ))
         .send()
         .await
-        .expect("Failed to HEAD and check artifact from Sake");
+        .expect("Failed to HEAD and check artifact from cache server");
 
     assert_eq!(response.status(), 200);
 }
@@ -121,7 +121,7 @@ async fn artifact_does_not_exist_test() {
         ))
         .send()
         .await
-        .expect("Failed to HEAD and check artifact from Sake");
+        .expect("Failed to HEAD and check artifact from cache server");
 
     assert_eq!(response.status(), 404);
 }
