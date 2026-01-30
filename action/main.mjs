@@ -7,6 +7,8 @@ import {
   getBinaryName,
   checkHealth,
   isProcessRunning,
+  colorString,
+  consoleColor,
 } from "./util.mjs";
 
 const __dirname = new URL(".", import.meta.url).pathname;
@@ -91,13 +93,13 @@ if (!isHealthy) {
 decayProcess.unref();
 
 console.log(`
-Turbo Cache Server running with pid: "${pid}"
-Health check passed at ${host}:${port}
+${colorString(consoleColor.FgGreen, "Turbo Cache Server running with pid:")} "${pid}"
+${colorString(consoleColor.FgGreen, "Health check passed at: ")}"${host}:${port}"
 
-Server startup output: ${startupOutput}
+${colorString(consoleColor.FgGreen, "Server startup output:")}
+${startupOutput}
 
-
-Web server logs are being written at "${LOGS_DIR}"
+${colorString(consoleColor.FgGreen, "Web server logs are being written at: ")}"${LOGS_DIR}"
 `);
 
 saveState(DECAY_PID_KEY, pid?.toString());
