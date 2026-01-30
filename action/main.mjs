@@ -93,6 +93,8 @@ decayProcess.unref();
 console.log(`
 Turbo Cache Server running with pid: "${pid}"
 Health check passed at ${host}:${port}
+Server startup output: ${startupOutput}
+
 Web server logs are being written at "${LOGS_DIR}"
 `);
 
