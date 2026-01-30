@@ -67,5 +67,40 @@ export function sleep(timeInMills) {
   return new Promise(resolve => setTimeout(resolve, timeInMills))
 }
 
+/**
+ * Check if the server is healthy by polling the health endpoint
+ * @param {string} host - The host to check
+ * @param {string} port - The port to check
+ * @param {number} retries - Maximum number of retry attempts
+ * @returns {Promise<boolean>} true if health check passes, false otherwise
+ */
+export async function checkHealth(host, port, retries = 20) {
+  const url = `http://${host}:${port}/management/health`
+  let attempt = 0
+  let backoff = 100 // Start with 100ms
+
+  while (attempt < retries) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000), // 2s timeout per request
+      })
+
+      if (response.ok) {
+        return true
+      }
+    } catch (error) {
+      // Connection refused, timeout, etc - server not ready yet
+      // Continue to next attempt
+    }
+
+    await sleep(backoff)
+    backoff = Math.min(backoff * 2, 2000) // Cap at 2s
+    attempt++
+  }
+
+  return false
+}
+
 export const LOGS_DIR = path.resolve(os.tmpdir(), 'decay_logs')
 export const DECAY_PID_KEY = 'DECAY_SERVER_PID'
