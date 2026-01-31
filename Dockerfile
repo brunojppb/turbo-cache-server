@@ -1,4 +1,4 @@
-FROM alpine:3.23.2 AS ca-certificates
+FROM alpine:3.23.3 AS ca-certificates
 RUN apk add --no-cache ca-certificates
 
 FROM --platform=$BUILDPLATFORM rust:alpine AS chef
