@@ -19,7 +19,7 @@ with:
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
 - [Minio Object Storage](https://min.io/)
 
-You can use the Turbo Cache Server as a **GitHub Action**. Here is how:
+The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x64` and `arm64` via a universal binary) runners. Here is how to use it:
 
 1.  In your workflow files, add the following global environment variables:
 
