@@ -7,45 +7,22 @@ concurrency:
 
 jobs:
   build:
-    name: Build
+    uses: ./.github/workflows/build-binaries.yml
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+
+  collect:
+    name: Collect binaries
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: login to Docker
-        uses: docker/login-action@v3
+      - uses: actions/download-artifact@v6
         with:
-          username: brunojppb
-          password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: build binary
-        run: |
-          docker pull --platform linux/arm64 brunojppb/turbo-cache-server-build:latest || true
-          docker pull --platform linux/amd64 brunojppb/turbo-cache-server-build:latest || true
-          docker buildx build --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:latest --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:cache --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest . 
-
-      - name: create temp containers to copy binaries from
-        run: |
-          docker pull brunojppb/turbo-cache-server-build:latest
-          docker create --name dist_arm64 --platform arm64 brunojppb/turbo-cache-server-build
-          docker create --name dist_x64 --platform amd64 brunojppb/turbo-cache-server-build
-
-      - name: copy arm64 binary
-        run: |
-          mkdir out && \
-          docker cp dist_arm64:/usr/bin/decay out/decay-arm64
-      
-      - name: copy x64 binary
-        run: |
-          docker cp dist_x64:/usr/bin/decay out/decay-x64
+          path: out
+          pattern: '*-binaries'
+          merge-multiple: true
 
       - uses: actions/upload-artifact@v6
         with:
           name: binaries
-          path: |
-            out/decay-arm64
-            out/decay-x64
+          path: out/

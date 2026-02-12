@@ -5,16 +5,26 @@ import * as path from "node:path";
 const supportedArches = ["arm64", "x64"];
 
 /**
- * Get the binary name from the current OS Arch.
- * We only support Linux `arm64` and `amd64` for the moment.
+ * Get the binary name from the current OS platform and architecture.
+ * Supports Linux (arm64, x64) and macOS (universal2).
  */
 export function getBinaryName() {
-  const arch = supportedArches.includes(os.arch());
-  if (!arch) {
-    throw new Error(`This action does not support this arch='${os.arch}'`);
+  const platform = os.platform();
+
+  if (platform === "darwin") {
+    return "decay-darwin-universal";
   }
 
-  return `decay-${os.arch}`;
+  if (platform === "linux") {
+    if (!supportedArches.includes(os.arch())) {
+      throw new Error(
+        `This action does not support Linux arch='${os.arch()}'`,
+      );
+    }
+    return `decay-${os.arch()}`;
+  }
+
+  throw new Error(`This action does not support platform='${platform}'`);
 }
 
 /**

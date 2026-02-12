@@ -26,6 +26,13 @@ RUN cargo zigbuild -r \
   cp target/aarch64-unknown-linux-musl/release/decay /app/linux/arm64 && \
   cp target/x86_64-unknown-linux-musl/release/decay /app/linux/amd64
 
+FROM ghcr.io/rust-cross/cargo-zigbuild AS macos-builder
+WORKDIR /app
+RUN rustup target add x86_64-apple-darwin aarch64-apple-darwin
+COPY . .
+RUN cargo zigbuild --release --target universal2-apple-darwin && \
+  cp target/universal2-apple-darwin/release/decay /app/decay-darwin-universal
+
 FROM scratch
 WORKDIR /app
 ARG TARGETPLATFORM
