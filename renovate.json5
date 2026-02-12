@@ -4,6 +4,6 @@
   lockFileMaintenance: {
     enabled: true,
     automerge: true,
-    schedule: "every weekday"
+    schedule: "every week"
   },
 }
