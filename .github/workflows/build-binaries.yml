@@ -1,0 +1,99 @@
+name: Build binaries
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Docker image tag for the Linux build. Defaults to 'latest'."
+        type: string
+        required: false
+        default: "latest"
+      cache-ref:
+        description: "Registry ref used for --cache-to. Defaults to 'cache'."
+        type: string
+        required: false
+        default: "cache"
+    secrets:
+      DOCKER_TOKEN:
+        required: true
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Update version on Cargo.toml
+        if: inputs.version != 'latest'
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ inputs.version }}\"/" Cargo.toml
+
+      - name: login to Docker
+        uses: docker/login-action@v3
+        with:
+          username: brunojppb
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: build binary
+        run: |
+          docker pull --platform linux/arm64 brunojppb/turbo-cache-server-build:latest || true
+          docker pull --platform linux/amd64 brunojppb/turbo-cache-server-build:latest || true
+          docker buildx build --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:${{ inputs.version }} --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:${{ inputs.cache-ref }} --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest .
+
+      - name: create temp containers to copy binaries from
+        run: |
+          docker pull brunojppb/turbo-cache-server-build:${{ inputs.version }}
+          docker create --name dist_arm64 --platform arm64 brunojppb/turbo-cache-server-build:${{ inputs.version }}
+          docker create --name dist_x64 --platform amd64 brunojppb/turbo-cache-server-build:${{ inputs.version }}
+
+      - name: copy arm64 binary
+        run: |
+          mkdir out && \
+          docker cp dist_arm64:/usr/bin/decay out/decay-arm64
+
+      - name: copy x64 binary
+        run: |
+          docker cp dist_x64:/usr/bin/decay out/decay-x64
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: linux-binaries
+          path: |
+            out/decay-arm64
+            out/decay-x64
+
+  build-macos:
+    name: Build macOS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Update version on Cargo.toml
+        if: inputs.version != 'latest'
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ inputs.version }}\"/" Cargo.toml
+
+      - name: build macOS binary
+        run: |
+          docker buildx build --target macos-builder --tag turbo-cache-macos-build --load .
+
+      - name: copy macOS binary
+        run: |
+          mkdir out && \
+          docker create --name dist_macos turbo-cache-macos-build
+          docker cp dist_macos:/app/decay-darwin-universal out/decay-darwin-universal
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: macos-binaries
+          path: |
+            out/decay-darwin-universal
