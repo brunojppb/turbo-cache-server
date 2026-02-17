@@ -392,6 +392,16 @@ The OpenTelemetry integration works with all major observability SaaS platforms 
 - **Commercial Platforms**: [Datadog](https://www.datadoghq.com/), [New Relic](https://newrelic.com/), [Honeycomb](https://www.honeycomb.io/), [Lightstep](https://lightstep.com/), [Dynatrace](https://www.dynatrace.com/)
 - **Open Source**: [Jaeger](https://www.jaegertracing.io/), [Prometheus](https://prometheus.io/), [Grafana Tempo](https://grafana.com/oss/tempo/), [Zipkin](https://zipkin.io/)
 
+### Disabling OpenTelemetry
+
+If you don't need telemetry, you can disable the OpenTelemetry SDK entirely by setting the `OTEL_SDK_DISABLED` environment variable to `true`. This follows the [OpenTelemetry specification](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration) for disabling the SDK.
+
+```shell
+export OTEL_SDK_DISABLED="true"
+```
+
+When disabled, no OTLP exporters or system metric collectors will be initialized, and no connections will be attempted to any collector endpoint. Standard console and file logging will continue to work normally.
+
 ### Configuration
 
 To enable OpenTelemetry export, set the following environment variables:
