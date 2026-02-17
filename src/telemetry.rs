@@ -13,12 +13,19 @@ use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::Registry;
 use tracing_subscriber::{
     EnvFilter,
     fmt::{self, MakeWriter},
     layer::SubscriberExt,
 };
+
+/// Check if the OpenTelemetry SDK is disabled via the OTEL_SDK_DISABLED environment variable.
+/// This follows the OpenTelemetry specification for disabling the SDK.
+fn is_otel_disabled() -> bool {
+    env::var("OTEL_SDK_DISABLED")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
 
 pub fn get_telemetry_subscriber<Sink>(
     name: &'static str,
@@ -44,50 +51,55 @@ where
         Err(_) => None,
     };
 
-    let span_exporter = SpanExporter::builder()
-        .with_tonic()
-        .build()
-        .expect("Could not create tracer");
+    // Only initialize OpenTelemetry export if the SDK is not disabled
+    let maybe_otel_layer = if is_otel_disabled() {
+        None
+    } else {
+        let span_exporter = SpanExporter::builder()
+            .with_tonic()
+            .build()
+            .expect("Could not create tracer");
 
-    let batch_processor = span_processor_with_async_runtime::BatchSpanProcessor::builder(
-        span_exporter,
-        runtime::Tokio,
-    )
-    .build();
-
-    let metrics_exporter = MetricExporter::builder()
-        .with_tonic()
-        .build()
-        .expect("could not create Metrics exporter");
-
-    let periodic_reader = periodic_reader_with_async_runtime::PeriodicReader::builder(
-        metrics_exporter,
-        runtime::Tokio,
-    )
-    .with_interval(Duration::from_secs(2))
-    .build();
-
-    let tracer = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-        .with_span_processor(batch_processor)
-        .with_sampler(Sampler::AlwaysOn)
-        .with_id_generator(RandomIdGenerator::default())
-        .with_max_events_per_span(64)
-        .with_max_attributes_per_span(16)
-        .with_resource(get_resource(name, version))
-        .build()
-        .tracer(name);
-
-    let meter_provider = SdkMeterProvider::builder()
-        .with_reader(periodic_reader)
-        .with_resource(get_resource(name, version))
+        let batch_processor = span_processor_with_async_runtime::BatchSpanProcessor::builder(
+            span_exporter,
+            runtime::Tokio,
+        )
         .build();
 
-    let opentelemetry_layer: OpenTelemetryLayer<Registry, _> = OpenTelemetryLayer::new(tracer);
+        let metrics_exporter = MetricExporter::builder()
+            .with_tonic()
+            .build()
+            .expect("could not create Metrics exporter");
 
-    opentelemetry::global::set_meter_provider(meter_provider);
+        let periodic_reader = periodic_reader_with_async_runtime::PeriodicReader::builder(
+            metrics_exporter,
+            runtime::Tokio,
+        )
+        .with_interval(Duration::from_secs(2))
+        .build();
+
+        let tracer = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_span_processor(batch_processor)
+            .with_sampler(Sampler::AlwaysOn)
+            .with_id_generator(RandomIdGenerator::default())
+            .with_max_events_per_span(64)
+            .with_max_attributes_per_span(16)
+            .with_resource(get_resource(name, version))
+            .build()
+            .tracer(name);
+
+        let meter_provider = SdkMeterProvider::builder()
+            .with_reader(periodic_reader)
+            .with_resource(get_resource(name, version))
+            .build();
+
+        opentelemetry::global::set_meter_provider(meter_provider);
+
+        Some(OpenTelemetryLayer::new(tracer))
+    };
 
     tracing_subscriber::registry()
-        .with(opentelemetry_layer)
+        .with(maybe_otel_layer)
         .with(env_filter)
         .with(JsonStorageLayer)
         .with(formatting_layer)
@@ -121,7 +133,12 @@ pub struct SystemMetrics {
 /// Initialize system metrics (CPU, RAM) using OpenTelemetry gauges.
 /// This should be called after the meter provider has been set globally.
 /// Returns a SystemMetrics struct that must be kept alive for the application's lifetime.
-pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemMetrics {
+/// Returns None if the OpenTelemetry SDK is disabled via OTEL_SDK_DISABLED.
+pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<SystemMetrics> {
+    if is_otel_disabled() {
+        return None;
+    }
+
     let meter = opentelemetry::global::meter(name);
     let system = Arc::new(Mutex::new(System::new_all()));
     let current_pid = Pid::from_u32(std::process::id());
@@ -197,9 +214,9 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> SystemM
         })
         .build();
 
-    SystemMetrics {
+    Some(SystemMetrics {
         _cpu_gauge: cpu_gauge,
         _memory_gauge: memory_gauge,
         _virtual_memory_gauge: virtual_memory_gauge,
-    }
+    })
 }
