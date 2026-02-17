@@ -51,7 +51,6 @@ where
         Err(_) => None,
     };
 
-    // Only initialize OpenTelemetry export if the SDK is not disabled
     let maybe_otel_layer = if is_otel_disabled() {
         None
     } else {
@@ -132,8 +131,6 @@ pub struct SystemMetrics {
 
 /// Initialize system metrics (CPU, RAM) using OpenTelemetry gauges.
 /// This should be called after the meter provider has been set globally.
-/// Returns a SystemMetrics struct that must be kept alive for the application's lifetime.
-/// Returns None if the OpenTelemetry SDK is disabled via OTEL_SDK_DISABLED.
 pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<SystemMetrics> {
     if is_otel_disabled() {
         return None;
