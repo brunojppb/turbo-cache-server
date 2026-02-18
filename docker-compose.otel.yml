@@ -15,7 +15,7 @@ services:
 
   # Observability
   collector:
-    image: otel/opentelemetry-collector:0.145.0@sha256:8cad95dd3fe0304fbc5652373cc392be4ac915c4c210d2c425d3f1a1f7c3c3ca
+    image: otel/opentelemetry-collector:0.146.0@sha256:60cf8cfda7086e792450a746953d5ec9579e440ae0d8a1e16608bb9960699844
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
     ports:
