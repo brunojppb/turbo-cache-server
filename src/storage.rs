@@ -2,6 +2,8 @@ use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
 
+pub const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
+
 #[derive(Debug)]
 pub struct Storage {
     bucket: Box<Bucket>,
@@ -54,10 +56,16 @@ impl Storage {
     /// Returns the `x-artifact-tag` user metadata value stored on the S3 object, if present.
     #[tracing::instrument(name = "get S3 artifact tag")]
     pub async fn get_artifact_tag(&self, path: &str) -> Option<String> {
-        let (head_result, _status) = self.bucket.head_object(path).await.ok()?;
+        let (head_result, _status) = match self.bucket.head_object(path).await {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(error = %error, path, "HEAD request failed, omitting artifact tag");
+                return None;
+            }
+        };
         head_result
             .metadata
-            .and_then(|metadata| metadata.get("x-artifact-tag").cloned())
+            .and_then(|metadata| metadata.get(ARTIFACT_TAG_HEADER).cloned())
     }
 
     /// Stores the given data in the S3 bucket under the given path.
@@ -80,7 +88,7 @@ impl Storage {
 
         if let Some(tag) = artifact_tag {
             builder = builder
-                .with_metadata("x-artifact-tag", tag)
+                .with_metadata(ARTIFACT_TAG_HEADER, tag)
                 .expect("Invalid x-artifact-tag metadata value");
         }
 

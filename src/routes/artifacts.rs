@@ -7,7 +7,7 @@ use actix_web::{
 use futures::StreamExt;
 use serde::Serialize;
 
-use crate::storage::Storage;
+use crate::storage::{ARTIFACT_TAG_HEADER, Storage};
 
 #[derive(Serialize)]
 struct Artifact {
@@ -25,8 +25,6 @@ struct CacheStatus {
 }
 
 const EMPTY_HASHES: PostTeamArtifactsResponse = PostTeamArtifactsResponse { hashes: vec![] };
-
-const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
 
 /// As of now, we do not need to list all artifacts for a given
 /// team. This seems to be an Admin endpoint for Vercel to map/reduce
@@ -92,11 +90,13 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
 
     let file_path = artifact_info.file_path();
 
-    let Some(response) = storage.get_file(&file_path).await else {
+    let (maybe_response, artifact_tag) = tokio::join!(
+        storage.get_file(&file_path),
+        storage.get_artifact_tag(&file_path),
+    );
+    let Some(response) = maybe_response else {
         return HttpResponse::NotFound().finish();
     };
-
-    let artifact_tag = storage.get_artifact_tag(&file_path).await;
 
     let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
         Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
