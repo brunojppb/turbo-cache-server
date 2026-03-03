@@ -26,6 +26,8 @@ struct CacheStatus {
 
 const EMPTY_HASHES: PostTeamArtifactsResponse = PostTeamArtifactsResponse { hashes: vec![] };
 
+const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
+
 /// As of now, we do not need to list all artifacts for a given
 /// team. This seems to be an Admin endpoint for Vercel to map/reduce
 /// on the artifacts for a given team and report metrics.
@@ -57,7 +59,16 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
         Some(info) => info,
         None => return HttpResponse::BadRequest().finish(),
     };
-    match storage.put_file(&artifact_info.file_path(), &body).await {
+
+    let artifact_tag = req
+        .headers()
+        .get(ARTIFACT_TAG_HEADER)
+        .and_then(|value| value.to_str().ok());
+
+    match storage
+        .put_file(&artifact_info.file_path(), &body, artifact_tag)
+        .await
+    {
         Ok(_) => {
             let artifact = Artifact {
                 filename: artifact_info.hash.clone(),
@@ -79,9 +90,13 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         None => return HttpResponse::NotFound().finish(),
     };
 
-    let Some(response) = storage.get_file(&artifact_info.file_path()).await else {
+    let file_path = artifact_info.file_path();
+
+    let Some(response) = storage.get_file(&file_path).await else {
         return HttpResponse::NotFound().finish();
     };
+
+    let artifact_tag = storage.get_artifact_tag(&file_path).await;
 
     let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
         Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
@@ -93,7 +108,13 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         }
     });
 
-    HttpResponse::Ok().streaming(stream)
+    let mut builder = HttpResponse::Ok();
+
+    if let Some(tag) = artifact_tag {
+        builder.insert_header((ARTIFACT_TAG_HEADER, tag));
+    }
+
+    builder.streaming(stream)
 }
 
 fn extract_team_from_req(req: &HttpRequest) -> String {

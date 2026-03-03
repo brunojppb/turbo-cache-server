@@ -1,7 +1,7 @@
 use pretty_assertions::assert_eq;
 use wiremock::{
     Mock, ResponseTemplate,
-    matchers::{method, path},
+    matchers::{header, method, path},
 };
 
 use crate::helpers::{TurboArtifactFileMock, spawn_app};
@@ -41,6 +41,39 @@ async fn upload_artifact_to_s3_test() {
 }
 
 #[tokio::test]
+async fn upload_artifact_forwards_artifact_tag_as_s3_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:abc123";
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("PUT"))
+    .and(header("x-amz-meta-x-artifact-tag", artifact_tag))
+    .respond_with(ResponseTemplate::new(201))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .put(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .header("Content-Type", "application/octet-stream")
+        .header("x-artifact-tag", artifact_tag)
+        .body(file_mock.file_bytes.clone())
+        .send()
+        .await
+        .expect("Failed to PUT artifact to the cache server");
+
+    assert_eq!(response.status(), 201);
+}
+
+#[tokio::test]
 async fn download_artifact_from_s3_test() {
     let app = spawn_app(None).await;
 
@@ -56,6 +89,16 @@ async fn download_artifact_from_s3_test() {
     .mount(&app.storage_server)
     .await;
 
+    // HEAD mock with no artifact-tag metadata
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(ResponseTemplate::new(200))
+    .mount(&app.storage_server)
+    .await;
+
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
@@ -67,6 +110,52 @@ async fn download_artifact_from_s3_test() {
 
     assert!(response.status() == 200);
     assert!(response.text().await.unwrap().as_bytes() == file_mock.file_bytes);
+}
+
+#[tokio::test]
+async fn download_artifact_returns_artifact_tag_from_s3_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:abc123";
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("GET"))
+    .respond_with(ResponseTemplate::new(200).set_body_bytes(file_mock.file_bytes.clone()))
+    .mount(&app.storage_server)
+    .await;
+
+    // HEAD response with x-amz-meta-x-artifact-tag — this is how S3 surfaces user metadata
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(
+        ResponseTemplate::new(200)
+            .insert_header("x-amz-meta-x-artifact-tag", artifact_tag),
+    )
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.headers().get("x-artifact-tag").unwrap(),
+        artifact_tag
+    );
 }
 
 #[tokio::test]
