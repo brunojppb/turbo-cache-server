@@ -53,10 +53,9 @@ async fn authorized_when_token_header_is_valid() {
 async fn check_endpoint(endpoint: &str, app: &TestApp, turbo_token: Option<String>) -> Response {
     let client = reqwest::Client::new();
 
-    let maybe_headers = match &turbo_token {
-        Some(token) => Some(("Authorization", format!("Bearer {token}"))),
-        None => None,
-    };
+    let maybe_headers = turbo_token
+        .as_ref()
+        .map(|token| ("Authorization", format!("Bearer {token}")));
 
     client
         .get(format!("{}{}", &app.address, endpoint))
@@ -67,7 +66,7 @@ async fn check_endpoint(endpoint: &str, app: &TestApp, turbo_token: Option<Strin
                     headers.insert(key, value.parse().unwrap());
                     headers
                 })
-                .unwrap_or(HeaderMap::new()),
+                .unwrap_or_default(),
         )
         .send()
         .await
