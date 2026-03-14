@@ -7,7 +7,9 @@ use actix_web::{
 use futures::StreamExt;
 use serde::Serialize;
 
-use crate::storage::{ARTIFACT_TAG_HEADER, Storage};
+use crate::storage::Storage;
+
+const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
 
 #[derive(Serialize)]
 struct Artifact {
@@ -58,13 +60,14 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
         None => return HttpResponse::BadRequest().finish(),
     };
 
-    let artifact_tag = req
+    let metadata = req
         .headers()
         .get(ARTIFACT_TAG_HEADER)
-        .and_then(|value| value.to_str().ok());
+        .and_then(|value| value.to_str().ok())
+        .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
 
     match storage
-        .put_file(&artifact_info.file_path(), &body, artifact_tag)
+        .put_file(&artifact_info.file_path(), &body, metadata.as_ref())
         .await
     {
         Ok(_) => {
@@ -90,9 +93,9 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
 
     let file_path = artifact_info.file_path();
 
-    let (maybe_response, artifact_tag) = tokio::join!(
+    let (maybe_response, metadata) = tokio::join!(
         storage.get_file(&file_path),
-        storage.get_artifact_tag(&file_path),
+        storage.get_metadata(&file_path),
     );
     let Some(response) = maybe_response else {
         return HttpResponse::NotFound().finish();
@@ -110,8 +113,8 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
 
     let mut builder = HttpResponse::Ok();
 
-    if let Some(tag) = artifact_tag {
-        builder.insert_header((ARTIFACT_TAG_HEADER, tag));
+    if let Some(tag) = metadata.as_ref().and_then(|m| m.get(ARTIFACT_TAG_HEADER)) {
+        builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
     }
 
     builder.streaming(stream)

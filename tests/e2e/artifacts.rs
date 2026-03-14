@@ -129,15 +129,15 @@ async fn download_artifact_returns_artifact_tag_from_s3_metadata_test() {
     .mount(&app.storage_server)
     .await;
 
-    // HEAD response with x-amz-meta-x-artifact-tag — this is how S3 surfaces user metadata
+    // HEAD response with x-amz-meta-x-artifact-tag
+    // as the x-amz-meta* is prepended for user-defined metadata
     Mock::given(path(format!(
         "/{}/{}/{}",
         app.bucket_name, file_mock.team, file_mock.file_hash
     )))
     .and(method("HEAD"))
     .respond_with(
-        ResponseTemplate::new(200)
-            .insert_header("x-amz-meta-x-artifact-tag", artifact_tag),
+        ResponseTemplate::new(200).insert_header("x-amz-meta-x-artifact-tag", artifact_tag),
     )
     .mount(&app.storage_server)
     .await;

@@ -1,8 +1,8 @@
+use std::collections::HashMap;
+
 use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
-
-pub const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
 
 #[derive(Debug)]
 pub struct Storage {
@@ -53,30 +53,28 @@ impl Storage {
         maybe_file.ok()
     }
 
-    /// Returns the `x-artifact-tag` user metadata value stored on the S3 object, if present.
-    #[tracing::instrument(name = "get S3 artifact tag")]
-    pub async fn get_artifact_tag(&self, path: &str) -> Option<String> {
+    /// Returns the user metadata stored on the S3 object, if present.
+    #[tracing::instrument(name = "get S3 object metadata")]
+    pub async fn get_metadata(&self, path: &str) -> Option<HashMap<String, String>> {
         let (head_result, _status) = match self.bucket.head_object(path).await {
             Ok(result) => result,
             Err(error) => {
-                tracing::warn!(error = %error, path, "HEAD request failed, omitting artifact tag");
+                tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
                 return None;
             }
         };
-        head_result
-            .metadata
-            .and_then(|metadata| metadata.get(ARTIFACT_TAG_HEADER).cloned())
+        head_result.metadata
     }
 
     /// Stores the given data in the S3 bucket under the given path.
-    /// When `artifact_tag` is provided it is persisted as S3 user metadata
-    /// under the key `x-artifact-tag` so it can be returned on subsequent GETs.
+    /// When `metadata` is provided, each key-value pair is persisted as S3 user
+    /// metadata (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
     #[tracing::instrument(name = "put S3 file")]
     pub async fn put_file(
         &self,
         path: &str,
         data: &[u8],
-        artifact_tag: Option<&str>,
+        metadata: Option<&HashMap<String, String>>,
     ) -> Result<(), String> {
         let mut builder = self.bucket.put_object_builder(path, data);
 
@@ -86,10 +84,12 @@ impl Storage {
                 .expect("Invalid server-side encryption header value");
         }
 
-        if let Some(tag) = artifact_tag {
-            builder = builder
-                .with_metadata(ARTIFACT_TAG_HEADER, tag)
-                .expect("Invalid x-artifact-tag metadata value");
+        if let Some(metadata) = metadata {
+            for (key, value) in metadata {
+                builder = builder
+                    .with_metadata(key, value)
+                    .expect("Invalid metadata value");
+            }
         }
 
         match builder.execute().await {
