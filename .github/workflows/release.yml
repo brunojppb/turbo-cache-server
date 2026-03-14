@@ -52,7 +52,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: action
-          pattern: '*-binaries'
+          pattern: "*-binaries"
           merge-multiple: true
 
       - name: Make binaries executable
@@ -108,10 +108,10 @@ jobs:
           PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
 
           NOTES_FILE=$(mktemp)
+          echo "## What's Changed" > "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
 
           if [ -n "$PREV_TAG" ]; then
-            echo "## What's Changed" > "$NOTES_FILE"
-            echo "" >> "$NOTES_FILE"
             git log "${PREV_TAG}..${CACHE_SERVER_VERSION}" \
               --pretty=format:"* %s (%h)" \
               --grep="^Release " --invert-grep >> "$NOTES_FILE"
@@ -119,8 +119,6 @@ jobs:
             echo "" >> "$NOTES_FILE"
             echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CACHE_SERVER_VERSION}" >> "$NOTES_FILE"
           else
-            echo "## What's Changed" > "$NOTES_FILE"
-            echo "" >> "$NOTES_FILE"
             git log "${CACHE_SERVER_VERSION}" \
               --pretty=format:"* %s (%h)" >> "$NOTES_FILE"
           fi
