@@ -9,6 +9,14 @@ use serde::Serialize;
 
 use crate::storage::Storage;
 
+/// When Turborepo is configured with `"signature": true` (turbo.json), the CLI
+/// computes an HMAC-SHA256 of each artifact and sends it as the `x-artifact-tag`
+/// header on PUT. The server persists this value as S3 object metadata and returns
+/// it on GET so the client can verify artifact integrity. Without it, every
+/// download fails signature verification and is treated as a cache miss.
+/// See: https://turborepo.dev/api/remote-cache-spec
+const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
+
 #[derive(Serialize)]
 struct Artifact {
     filename: String,
@@ -57,7 +65,17 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
         Some(info) => info,
         None => return HttpResponse::BadRequest().finish(),
     };
-    match storage.put_file(&artifact_info.file_path(), &body).await {
+
+    let metadata = req
+        .headers()
+        .get(ARTIFACT_TAG_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
+
+    match storage
+        .put_file(&artifact_info.file_path(), &body, metadata.as_ref())
+        .await
+    {
         Ok(_) => {
             let artifact = Artifact {
                 filename: artifact_info.hash.clone(),
@@ -79,7 +97,13 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         None => return HttpResponse::NotFound().finish(),
     };
 
-    let Some(response) = storage.get_file(&artifact_info.file_path()).await else {
+    let file_path = artifact_info.file_path();
+
+    let (maybe_response, metadata) = tokio::join!(
+        storage.get_file(&file_path),
+        storage.get_metadata(&file_path),
+    );
+    let Some(response) = maybe_response else {
         return HttpResponse::NotFound().finish();
     };
 
@@ -93,7 +117,13 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         }
     });
 
-    HttpResponse::Ok().streaming(stream)
+    let mut builder = HttpResponse::Ok();
+
+    if let Some(tag) = metadata.as_ref().and_then(|m| m.get(ARTIFACT_TAG_HEADER)) {
+        builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
+    }
+
+    builder.streaming(stream)
 }
 
 fn extract_team_from_req(req: &HttpRequest) -> String {
