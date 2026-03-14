@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Update version on Cargo.toml
         run: |
@@ -50,7 +52,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: action
-          pattern: '*-binaries'
+          pattern: "*-binaries"
           merge-multiple: true
 
       - name: Make binaries executable
@@ -97,3 +99,32 @@ jobs:
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: git push origin $CACHE_SERVER_VERSION
+
+      - name: Create GitHub Release
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+
+          NOTES_FILE=$(mktemp)
+          echo "## What's Changed" > "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+
+          if [ -n "$PREV_TAG" ]; then
+            git log "${PREV_TAG}..${CACHE_SERVER_VERSION}" \
+              --pretty=format:"* %s (%h)" \
+              --grep="^Release " --invert-grep >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CACHE_SERVER_VERSION}" >> "$NOTES_FILE"
+          else
+            git log "${CACHE_SERVER_VERSION}" \
+              --pretty=format:"* %s (%h)" >> "$NOTES_FILE"
+          fi
+
+          gh release create "${CACHE_SERVER_VERSION}" \
+            --title "${CACHE_SERVER_VERSION}" \
+            --notes-file "$NOTES_FILE"
+
+          rm -f "$NOTES_FILE"
