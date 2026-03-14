@@ -40,6 +40,12 @@ async fn upload_artifact_to_s3_test() {
     assert!(response.status() == 201);
 }
 
+/// When Turborepo is configured with `"signature": true` (turbo.json), the CLI
+/// computes an HMAC-SHA256 of each artifact and sends it as the `x-artifact-tag`
+/// header on PUT. The server must persist this value so it can be returned on GET,
+/// allowing the client to verify artifact integrity. Without it, every download
+/// fails signature verification and is treated as a cache miss.
+/// See: https://turborepo.dev/api/remote-cache-spec (PUT /artifacts/{hash})
 #[tokio::test]
 async fn upload_artifact_forwards_artifact_tag_as_s3_metadata_test() {
     let app = spawn_app(None).await;
@@ -112,6 +118,10 @@ async fn download_artifact_from_s3_test() {
     assert!(response.text().await.unwrap().as_bytes() == file_mock.file_bytes);
 }
 
+/// Counterpart to `upload_artifact_forwards_artifact_tag_as_s3_metadata_test`.
+/// On GET, the server must return the `x-artifact-tag` header that was stored
+/// during upload so the Turborepo client can verify the artifact signature.
+/// See: https://turborepo.dev/api/remote-cache-spec (GET /artifacts/{hash})
 #[tokio::test]
 async fn download_artifact_returns_artifact_tag_from_s3_metadata_test() {
     let app = spawn_app(None).await;
