@@ -37,6 +37,8 @@ pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
     app_settings.s3_endpoint = Some(storage_server.uri());
     app_settings.s3_use_path_style = true;
     app_settings.s3_bucket_name.clone_from(&bucket_name);
+    app_settings.s3_access_key = Some("mock_access_key".to_owned());
+    app_settings.s3_secret_key = Some("mock_secret_key".to_owned());
     app_settings.turbo_token = config.and_then(|v| v.turbo_token);
 
     let server = decay::startup::run(listener, app_settings).expect("Could not bind to listener");
