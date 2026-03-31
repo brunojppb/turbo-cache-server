@@ -8,4 +8,7 @@
 *.log
 .env
 db
+
+# RustFS container during
 s3_data
+s3_logs
