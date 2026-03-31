@@ -2,16 +2,26 @@ name: "turbo_cache_server_otel"
 
 services:
   s3_bucket:
-    image: minio/minio:RELEASE.2025-02-18T16-25-55Z@sha256:1df91be8d6a6146001cd6be2569a12785a8ece583b511f56ebed08f1e65d3611
+    image: rustfs/rustfs:latest
     ports:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio12345
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
     volumes:
       - s3_data:/data
-    command: server /data --console-address ":9001"
+      - s3_logs:/logs
+    command:
+      - --address
+      - :9000
+      - --console-enable
+      - --access-key
+      - rustfsadmin
+      - --secret-key
+      - rustfsadmin
+      - /data
 
   # Observability
   collector:
@@ -40,4 +50,5 @@ services:
 
 volumes:
   s3_data:
+  s3_logs:
   

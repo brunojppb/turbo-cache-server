@@ -17,7 +17,7 @@ with:
 
 - [Amazon S3](https://aws.amazon.com/s3/)
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
-- [Minio Object Storage](https://min.io/)
+- [RustFS](https://github.com/rustfs/rustfs)
 
 The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x64` and `arm64` via a universal binary) runners. Here is how to use it:
 
@@ -52,7 +52,7 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             # Optional: If you need to provide specific auth keys, separate from default AWS credentials
             S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
             S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
-            # Optional: If not using AWS, provide endpoint like `https://minio` for your instance.
+            # Optional: If not using AWS, provide endpoint like `https://rustfs` for your instance.
             S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
             # Optional: If your S3-compatible store does not support requests
             # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
@@ -309,7 +309,7 @@ Object expiration is based on the last modified time of objects in your bucket. 
 
 ### AWS S3 and S3-Compatible Providers
 
-For AWS S3, Cloudflare R2, Minio, and other S3-compatible providers, you can use the AWS CLI to configure lifecycle rules.
+For AWS S3, Cloudflare R2, RustFS, and other S3-compatible providers, you can use the AWS CLI to configure lifecycle rules.
 
 #### Expire objects after 30 days
 
@@ -358,7 +358,7 @@ You can also set a specific expiration date:
 - **AWS S3**: Full lifecycle management support. See the [AWS S3 Lifecycle documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-expire-general-considerations.html) for advanced options like transitioning to different storage classes.
 - **Cloudflare R2**: Supports S3-compatible lifecycle API. Use the same AWS CLI commands with your R2 endpoint.
 - **Tigris**: Supports object expiration via lifecycle rules. See the [Tigris object expiration documentation](https://www.tigrisdata.com/docs/buckets/objects-expiration/) for details.
-- **Minio**: Supports S3-compatible lifecycle configuration. Use the AWS CLI with your Minio endpoint.
+- **RustFS**: Use the AWS CLI with your RustFS endpoint when your deployment exposes the S3 lifecycle APIs.
 
 ### Important Considerations
 
@@ -429,13 +429,15 @@ export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=<your-api-key>"
 
 ### Local Development
 
-For local testing, you can use the provided Docker Compose setup that includes Jaeger and Prometheus:
+For local testing, you can use the provided Docker Compose setup that includes RustFS, Jaeger, and Prometheus:
 
 ```shell
 docker-compose -f docker-compose.otel.yml up
 ```
 
 This starts:
+- **RustFS API**: http://localhost:9000
+- **RustFS Console**: http://localhost:9001
 - **Jaeger UI**: http://localhost:16686 (trace visualization)
 - **Prometheus**: http://localhost:9090 (metrics storage and queries)
 - **OpenTelemetry Collector**: Receives and routes telemetry data
@@ -538,28 +540,33 @@ cargo run
 
 During local development, you might want to try the Turbo Dev Server locally
 against a JS monorepo. As it depends on a S3-compatible service for storing
-Turborepo artifacts, we recommend using [Minio](https://min.io/) with Docker
+Turborepo artifacts, we recommend using [RustFS](https://github.com/rustfs/rustfs) with Docker
 with the following command:
 
 ```shell
-docker run \
-  -d \
+docker run -d \
+  --name rustfs_container \
   -p 9000:9000 \
   -p 9001:9001 \
-  --user $(id -u):$(id -g) \
-  --name minio1 \
-  -e "MINIO_ROOT_USER=minio" \
-  -e "MINIO_ROOT_PASSWORD=minio12345" \
-  -v ./s3_data:/data \
-  quay.io/minio/minio server /data --console-address ":9001"
+  -v $(pwd)/s3_data:/data \
+  -v $(pwd)/s3_logs:/logs \
+  -e RUSTFS_ACCESS_KEY=rustfsadmin \
+  -e RUSTFS_SECRET_KEY=rustfsadmin \
+  -e RUSTFS_CONSOLE_ENABLE=true \
+  rustfs/rustfs:latest \
+  --address :9000 \
+  --console-enable \
+  --access-key rustfsadmin \
+  --secret-key rustfsadmin \
+  /data
 ```
 
 #### Setting up environment variables
 
 Copy the `.env.example` file, rename it to `.env` and add the environment
-variables required. As we use Minio locally, just go to the
-[Web UI](http://localhost:9001) of Minio, create a bucket and generate
-credentials and copy it to the `.env` file.
+variables required. As we use RustFS locally, open the
+[Web UI](http://localhost:9001), create a bucket, and use `rustfsadmin` for
+both `S3_ACCESS_KEY` and `S3_SECRET_KEY` in the `.env` file.
 
 ### Tests
 
