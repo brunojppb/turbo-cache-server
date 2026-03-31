@@ -21,6 +21,7 @@ dotenv = "0.15.0"
 rust-s3 = "0.37"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7", features = ["io"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
@@ -28,6 +29,7 @@ tracing-log = "0.2"
 tracing-bunyan-formatter = "0.3"
 tracing-opentelemetry = "0.32"
 futures = "0.3"
+http = "1"
 openssl = { version = "0.10", features = ["vendored"] }
 opentelemetry = { version = "0.31" }
 opentelemetry_sdk = { version = "0.31", features = [

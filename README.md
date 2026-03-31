@@ -63,10 +63,6 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             # Optional: Enable server-side encryption for stored artifacts.
             # Valid values: AES256, aws:kms, aws:kms:dsse, aws:fsx
             S3_SERVER_SIDE_ENCRYPTION: "AES256"
-            # Max payload size for each cache object sent by Turborepo
-            # Defaults to 100 MB
-            # Requests larger than that, will get "HTTP 413: Entity Too Large" errors
-            MAX_PAYLOAD_SIZE_IN_MB: "100"
 
         # Now you can run your turborepo tasks and rely on the cache server
         # available in the background to provide previously built artifacts (cache hits)
@@ -193,8 +189,6 @@ spec:
               value: "https://your-s3-endpoint.com"
             - name: S3_SERVER_SIDE_ENCRYPTION
               value: "AES256"
-            - name: MAX_PAYLOAD_SIZE_IN_MB
-              value: "100"
           resources:
             requests:
               memory: "128Mi"
@@ -245,6 +239,8 @@ Apply the service:
 ```shell
 kubectl apply -f turbo-cache-service.yaml
 ```
+
+Artifacts are uploaded to S3 using streaming rather than full in-memory buffering. There is no server-side setting for enforcing payload size, so size limits should be enforced by your reverse proxy, ingress, load balancer, or storage policy if you need them.
 
 #### 4. (Optional) Create an Ingress
 

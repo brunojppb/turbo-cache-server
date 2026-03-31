@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use actix_web::{
     HttpRequest, HttpResponse, Responder,
-    web::{Bytes, Data, Query},
+    web::{Bytes, Data, Payload, Query},
 };
 use futures::StreamExt;
 use serde::Serialize;
+use tokio_util::io::StreamReader;
 
 use crate::storage::Storage;
 
@@ -60,7 +61,7 @@ pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl R
 }
 
 #[tracing::instrument(name = "Store artifact", skip(storage, body))]
-pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> impl Responder {
+pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(&req) {
         Some(info) => info,
         None => return HttpResponse::BadRequest().finish(),
@@ -72,8 +73,11 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Bytes) -> 
         .and_then(|value| value.to_str().ok())
         .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
 
+    let io_stream = body.map(|chunk| chunk.map_err(std::io::Error::other));
+    let mut reader = StreamReader::new(io_stream);
+
     match storage
-        .put_file(&artifact_info.file_path(), &body, metadata.as_ref())
+        .put_file_stream(&artifact_info.file_path(), &mut reader, metadata.as_ref())
         .await
     {
         Ok(_) => {

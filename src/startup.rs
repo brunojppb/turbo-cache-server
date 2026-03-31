@@ -40,9 +40,6 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
             .service(artifacts_scope)
             .app_data(app_settings.clone())
             .app_data(storage.clone())
-            .app_data(actix_web::web::PayloadConfig::new(
-                app_settings.max_payload_size_in_bytes,
-            ))
     })
     .listen(listener)?
     .run();
