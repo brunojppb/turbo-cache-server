@@ -61,11 +61,7 @@ pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl R
 }
 
 #[tracing::instrument(name = "Store artifact", skip(storage, body))]
-pub async fn put_file(
-    req: HttpRequest,
-    storage: Data<Storage>,
-    body: Payload,
-) -> impl Responder {
+pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -> impl Responder {
     let artifact_info = match ArtifactRequest::from(&req) {
         Some(info) => info,
         None => return HttpResponse::BadRequest().finish(),
@@ -77,9 +73,8 @@ pub async fn put_file(
         .and_then(|value| value.to_str().ok())
         .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
 
-    let io_stream = body.map(|chunk| {
-        chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    });
+    let io_stream =
+        body.map(|chunk| chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
     let mut reader = StreamReader::new(io_stream);
 
     match storage
