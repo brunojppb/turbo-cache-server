@@ -60,9 +60,6 @@ pub struct AppSettings {
     /// Defaults to the loopback address
     pub host: String,
     pub port: u16,
-    /// The maximum size allowed for payloads
-    /// uploaded by Turborepo. Defaults to 100MB.
-    pub max_payload_size_in_bytes: usize,
     pub s3_access_key: Option<String>,
     pub s3_secret_key: Option<String>,
     pub s3_endpoint: Option<String>,
@@ -102,21 +99,11 @@ pub fn get_settings() -> AppSettings {
     // which creates a folder within the S3 bucket and uploads everything under that.
     let s3_bucket_name = env::var("S3_BUCKET_NAME").unwrap_or("turbo".to_owned());
 
-    let payload_in_mb = env::var("MAX_PAYLOAD_SIZE_IN_MB").unwrap_or("100".to_string());
-
-    let max_payload_size_in_bytes = payload_in_mb
-        .parse::<usize>()
-        .map(|size_in_mb| size_in_mb * 1024 * 1024)
-        .unwrap_or_else(|_| {
-            panic!("Invalid value given for MAX_PAYLOAD_SIZE_IN_MB: \"{payload_in_mb}\"",)
-        });
-
     let turbo_token = env::var("TURBO_TOKEN").ok();
 
     AppSettings {
         host,
         port,
-        max_payload_size_in_bytes,
         s3_access_key,
         s3_secret_key,
         s3_region,
