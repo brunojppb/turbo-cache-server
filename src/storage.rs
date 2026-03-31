@@ -73,12 +73,15 @@ impl Storage {
     /// When `metadata` is provided, each key-value pair is persisted as S3 user
     /// metadata (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
     #[tracing::instrument(name = "put S3 file stream", skip(reader))]
-    pub async fn put_file_stream(
+    pub async fn put_file_stream<R>(
         &self,
         path: &str,
-        reader: &mut (impl AsyncRead + Unpin),
+        reader: &mut R,
         metadata: Option<&HashMap<String, String>>,
-    ) -> Result<(), String> {
+    ) -> Result<(), String>
+    where
+        R: AsyncRead + Unpin,
+    {
         let mut builder = self.bucket.put_object_stream_builder(path);
 
         if let Some(encryption) = self.server_side_encryption {
