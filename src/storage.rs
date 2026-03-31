@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
 use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
+use tokio::io::AsyncRead;
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
+
+const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
 
 #[derive(Debug)]
 pub struct Storage {
@@ -66,21 +69,21 @@ impl Storage {
         head_result.metadata
     }
 
-    /// Stores the given data in the S3 bucket under the given path.
+    /// Streams the given data to the S3 bucket under the given path.
     /// When `metadata` is provided, each key-value pair is persisted as S3 user
     /// metadata (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
-    #[tracing::instrument(name = "put S3 file")]
-    pub async fn put_file(
+    #[tracing::instrument(name = "put S3 file stream", skip(reader))]
+    pub async fn put_file_stream(
         &self,
         path: &str,
-        data: &[u8],
+        reader: &mut (impl AsyncRead + Unpin),
         metadata: Option<&HashMap<String, String>>,
     ) -> Result<(), String> {
-        let mut builder = self.bucket.put_object_builder(path, data);
+        let mut builder = self.bucket.put_object_stream_builder(path);
 
         if let Some(encryption) = self.server_side_encryption {
             builder = builder
-                .with_server_side_encryption(encryption)
+                .with_header(SSE_HEADER, encryption.as_str())
                 .expect("Invalid server-side encryption header value");
         }
 
@@ -92,7 +95,7 @@ impl Storage {
             }
         }
 
-        match builder.execute().await {
+        match builder.execute_stream(reader).await {
             Ok(_response) => Ok(()),
             Err(e) => Err(format!("Could not upload file: {e}")),
         }
