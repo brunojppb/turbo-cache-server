@@ -24,9 +24,9 @@ pub async fn validate_turbo_token(
             }
             return Ok(unauthrorized(req));
         }
-        (Some(_token), None) => return Ok(unauthrorized(req)),
-        _ => {
-            tracing::info!("No token provided. skipping...");
+        (Some(_), None) => return Ok(unauthrorized(req)),
+        (None, _) => {
+            // Reached only when ALLOW_NO_TOKEN=true was set at startup.
             return next.call(req).await.map(|v| v.map_into_boxed_body());
         }
     }

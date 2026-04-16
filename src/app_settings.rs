@@ -99,7 +99,20 @@ pub fn get_settings() -> AppSettings {
     // which creates a folder within the S3 bucket and uploads everything under that.
     let s3_bucket_name = env::var("S3_BUCKET_NAME").unwrap_or("turbo".to_owned());
 
-    let turbo_token = env::var("TURBO_TOKEN").ok();
+    let turbo_token = env::var("TURBO_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
+
+    let allow_no_token = env::var("ALLOW_NO_TOKEN")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    if turbo_token.is_none() && !allow_no_token {
+        panic!(
+            "TURBO_TOKEN is not set. Refusing to start without authentication. \
+             Set ALLOW_NO_TOKEN=true to explicitly disable authentication (not recommended for production)."
+        );
+    }
 
     AppSettings {
         host,
