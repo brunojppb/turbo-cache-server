@@ -27,7 +27,10 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
     env:
       TURBO_API: "http://127.0.0.1:8585"
       TURBO_TEAM: "NAME_OF_YOUR_REPO_HERE"
-      # The value of TURBO_TOKEN will be checked by the cache server
+      # TURBO_TOKEN is required by Turborepo to enable remote caching.
+      # The cache server only validates it when TURBO_TOKEN is also set
+      # on the server itself — otherwise the server accepts any value.
+      # See the "Authentication" section below for details.
       TURBO_TOKEN: "secret-turbo-token"
     ```
 
@@ -98,10 +101,34 @@ docker run \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
   -e S3_SERVER_SIDE_ENCRYPTION=AES256 \
+  # Optional: enables authentication. See "Authentication" below.
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server
 ```
+
+## Authentication
+
+Turbo Cache Server runs **without authentication by default**. This is an
+intentional design decision: in the vast majority of deployments the server
+sits behind a private network (a VPC, a Kubernetes cluster, or a GitHub
+Actions runner) where only trusted sources can reach it, and requiring a
+shared token adds overhead without a meaningful security benefit.
+
+To enable authentication, set the `TURBO_TOKEN` environment variable on the
+server. When set, every incoming request must include an
+`Authorization: Bearer <TURBO_TOKEN>` header or it will be rejected with
+`401 Unauthorized`. Turborepo clients read their own `TURBO_TOKEN` env var
+and send this header automatically, so the server-side and client-side
+values must match.
+
+When `TURBO_TOKEN` is unset on the server, the authentication middleware is
+bypassed entirely and any `Authorization` header on incoming requests is
+ignored.
+
+> [!TIP]
+> If you expose the cache server to the public internet, or to networks you
+> do not fully control, you should set `TURBO_TOKEN` on the server.
 
 ## Deploying to Kubernetes
 
@@ -130,6 +157,7 @@ type: Opaque
 stringData:
   S3_ACCESS_KEY: "your-access-key-here"
   S3_SECRET_KEY: "your-secret-key-here"
+  # Optional: omit to run without authentication. See "Authentication" above.
   TURBO_TOKEN: "secret-turbo-token"
 ```
 
@@ -180,6 +208,7 @@ spec:
                 secretKeyRef:
                   name: turbo-cache-s3-credentials
                   key: S3_SECRET_KEY
+            # Optional: only needed when authentication is enabled.
             - name: TURBO_TOKEN
               valueFrom:
                 secretKeyRef:
