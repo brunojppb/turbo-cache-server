@@ -46,7 +46,7 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
           # As we don't ship the latest versions of the binary on the main branch
           # PLEASE see the latest versions here:
           # https://github.com/brunojppb/turbo-cache-server/releases
-          uses: brunojppb/turbo-cache-server@2.0.2
+          uses: brunojppb/turbo-cache-server@4.0.3
           env:
             PORT: "8585"
             S3_BUCKET_NAME: your-bucket-name-here
@@ -104,7 +104,7 @@ docker run \
   # Optional: enables authentication. See "Authentication" below.
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
-  ghcr.io/brunojppb/turbo-cache-server
+  ghcr.io/brunojppb/turbo-cache-server:latest
 ```
 
 ## Authentication
@@ -500,7 +500,7 @@ sequenceDiagram
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
     B->>+C: Trigger CI pipeline
-    C->>+D: turborepo cache server via<br/>"use: turbo-cache-server@0.0.2" action
+    C->>+D: turborepo cache server via<br/>"use: turbo-cache-server@4.0.3" action
     Note right of C: Starts a server instance<br/> in the background.
     D-->>-C: Turbo cache server ready
     C->>+D: Turborepo executes task<br/>(e.g. test, build)
@@ -529,7 +529,7 @@ sequenceDiagram
     participant E as S3 bucket
     A->>+B: Push new commit to GH.<br>Trigger PR Checks.
     B->>+C: Trigger CI pipeline
-    C->>+D: turborepo cache server via<br/>"use: turbo-cache-server@0.0.2" action
+    C->>+D: turborepo cache server via<br/>"use: turbo-cache-server@4.0.3" action
     Note right of C: Starts a server instance<br/> in the background.
     D-->>-C: Turborepo cache server ready
     C->>+D: Turborepo executes build task
