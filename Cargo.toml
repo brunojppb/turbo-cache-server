@@ -27,21 +27,21 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tracing-log = "0.2"
 tracing-bunyan-formatter = "0.3"
-tracing-opentelemetry = "0.32"
+tracing-opentelemetry = "0.33"
 futures = "0.3"
 http = "1"
 openssl = { version = "0.10", features = ["vendored"] }
-opentelemetry = { version = "0.31" }
-opentelemetry_sdk = { version = "0.31", features = [
+opentelemetry = { version = "0.32" }
+opentelemetry_sdk = { version = "0.32", features = [
   "rt-tokio",
   "experimental_trace_batch_span_processor_with_async_runtime",
   "experimental_metrics_periodicreader_with_async_runtime",
 ] }
-opentelemetry-otlp = { version = "0.31.0", features = [
+opentelemetry-otlp = { version = "0.32.0", features = [
   "grpc-tonic",
   "http-json",
 ] }
-opentelemetry-semantic-conventions = { version = "0.31.0", features = [
+opentelemetry-semantic-conventions = { version = "0.32.0", features = [
   "semconv_experimental",
 ] }
 sysinfo = "0.38"
