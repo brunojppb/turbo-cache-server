@@ -6,4 +6,17 @@
     automerge: true,
     schedule: "before 5am on monday"
   },
+  packageRules: [
+    {
+      matchManagers: ["cargo"],
+      matchPackageNames: [
+        "opentelemetry",
+        "opentelemetry_sdk",
+        "opentelemetry-otlp",
+        "opentelemetry-semantic-conventions",
+        "tracing-opentelemetry"
+      ],
+      groupName: "opentelemetry"
+    }
+  ]
 }
