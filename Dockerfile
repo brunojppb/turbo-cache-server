@@ -28,7 +28,8 @@ RUN cargo zigbuild -r \
 
 FROM ghcr.io/rust-cross/cargo-zigbuild AS macos-builder
 WORKDIR /app
-RUN rustup target add x86_64-apple-darwin aarch64-apple-darwin
+RUN rustup update stable && rustup default stable && \
+  rustup target add x86_64-apple-darwin aarch64-apple-darwin
 COPY . .
 RUN cargo zigbuild --release --target universal2-apple-darwin && \
   cp target/universal2-apple-darwin/release/decay /app/decay-darwin-universal
