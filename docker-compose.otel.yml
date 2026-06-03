@@ -42,7 +42,7 @@ services:
       - "9090:9090"
 
   jaeger:
-    image: jaegertracing/jaeger:2.18.0@sha256:d2cbd047e44b50c11454820f84fd5f34c24a435e5301cf94fe026bf055db80b3
+    image: jaegertracing/jaeger:2.19.0@sha256:ede4864215be4cd85bd8c3129a2fea6c5713c5653c7282c429dba123014bc68b
     ports:
       - "4317" # OTELP GRPC
       - "4318" # OTELP HTTP
