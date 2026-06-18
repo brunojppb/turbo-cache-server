@@ -100,6 +100,15 @@ jobs:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
         run: git push origin $CACHE_SERVER_VERSION
 
+      - name: Stage release binaries
+        run: |
+          mkdir -p release-assets
+          cp action/decay-x64 release-assets/decay-x86_64-unknown-linux-musl
+          cp action/decay-arm64 release-assets/decay-aarch64-unknown-linux-musl
+          cp action/decay-darwin-universal release-assets/decay-universal-apple-darwin
+          chmod +x release-assets/*
+          cd release-assets && sha256sum decay-* > SHA256SUMS
+
       - name: Create GitHub Release
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
@@ -123,8 +132,27 @@ jobs:
               --pretty=format:"* %s (%h)" >> "$NOTES_FILE"
           fi
 
+          echo "" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "## Downloads" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "Prebuilt binaries for running \`decay\` without Docker (e.g. as a systemd service)." >> "$NOTES_FILE"
+          echo "The Linux binaries are statically linked (musl) and run on any modern x86-64/ARM64 Linux distro." >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "| Platform | Architecture | Asset |" >> "$NOTES_FILE"
+          echo "| --- | --- | --- |" >> "$NOTES_FILE"
+          echo "| Linux (musl) | x86-64 | \`decay-x86_64-unknown-linux-musl\` |" >> "$NOTES_FILE"
+          echo "| Linux (musl) | ARM64 | \`decay-aarch64-unknown-linux-musl\` |" >> "$NOTES_FILE"
+          echo "| macOS (universal) | Intel + Apple Silicon | \`decay-universal-apple-darwin\` |" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "Verify a download against \`SHA256SUMS\`, e.g. \`sha256sum -c SHA256SUMS --ignore-missing\`." >> "$NOTES_FILE"
+
           gh release create "${CACHE_SERVER_VERSION}" \
             --title "${CACHE_SERVER_VERSION}" \
-            --notes-file "$NOTES_FILE"
+            --notes-file "$NOTES_FILE" \
+            release-assets/decay-x86_64-unknown-linux-musl \
+            release-assets/decay-aarch64-unknown-linux-musl \
+            release-assets/decay-universal-apple-darwin \
+            release-assets/SHA256SUMS
 
           rm -f "$NOTES_FILE"
