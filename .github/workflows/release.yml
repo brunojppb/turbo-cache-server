@@ -141,9 +141,10 @@ jobs:
           echo "" >> "$NOTES_FILE"
           echo "| Platform | Architecture | Asset |" >> "$NOTES_FILE"
           echo "| --- | --- | --- |" >> "$NOTES_FILE"
-          echo "| Linux (musl) | x86-64 | \`decay-x86_64-unknown-linux-musl\` |" >> "$NOTES_FILE"
-          echo "| Linux (musl) | ARM64 | \`decay-aarch64-unknown-linux-musl\` |" >> "$NOTES_FILE"
-          echo "| macOS (universal) | Intel + Apple Silicon | \`decay-universal-apple-darwin\` |" >> "$NOTES_FILE"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${CACHE_SERVER_VERSION}"
+          echo "| Linux (musl) | x86-64 | [decay-x86_64-unknown-linux-musl](${DOWNLOAD_URL}/decay-x86_64-unknown-linux-musl) |" >> "$NOTES_FILE"
+          echo "| Linux (musl) | ARM64 | [decay-aarch64-unknown-linux-musl](${DOWNLOAD_URL}/decay-aarch64-unknown-linux-musl) |" >> "$NOTES_FILE"
+          echo "| macOS (universal) | Intel + Apple Silicon | [decay-universal-apple-darwin](${DOWNLOAD_URL}/decay-universal-apple-darwin) |" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
           echo "Verify a download against \`SHA256SUMS\`, e.g. \`sha256sum -c SHA256SUMS --ignore-missing\`." >> "$NOTES_FILE"
 
