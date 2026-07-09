@@ -1,10 +1,17 @@
+# Rust toolchain version. This is the single fallback for standalone `docker build`.
+# CI always overrides it with --build-arg RUST_VERSION read from rust-toolchain.toml,
+# which is the single source of truth for the pinned version.
+ARG RUST_VERSION=1.96.1
+
 FROM alpine:3.24.1 AS ca-certificates
 RUN apk add --no-cache ca-certificates
 
 FROM --platform=$BUILDPLATFORM rust:alpine AS chef
+ARG RUST_VERSION
 WORKDIR /app
 ENV PKGCONFIG_SYSROOTDIR=/
 RUN apk add --no-cache musl-dev openssl-dev zig perl make && \
+  rustup toolchain install ${RUST_VERSION} && rustup default ${RUST_VERSION} && \
   cargo install --locked cargo-zigbuild cargo-chef && \
   rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 
@@ -27,8 +34,9 @@ RUN cargo zigbuild -r \
   cp target/x86_64-unknown-linux-musl/release/decay /app/linux/amd64
 
 FROM ghcr.io/rust-cross/cargo-zigbuild AS macos-builder
+ARG RUST_VERSION
 WORKDIR /app
-RUN rustup update stable && rustup default stable && \
+RUN rustup toolchain install ${RUST_VERSION} && rustup default ${RUST_VERSION} && \
   rustup target add x86_64-apple-darwin aarch64-apple-darwin
 COPY . .
 RUN cargo zigbuild --release --target universal2-apple-darwin && \
