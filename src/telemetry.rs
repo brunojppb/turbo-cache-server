@@ -43,8 +43,7 @@ where
     // Only output logs to a file if the runtime has given an output path
     let maybe_file_layer = match env::var("LOGS_DIRECTORY") {
         Ok(logs_dir) => {
-            let file_appender =
-                tracing_appender::rolling::never(logs_dir, format!("{}.log", &name));
+            let file_appender = tracing_appender::rolling::never(logs_dir, format!("{}.log", name));
             let file_layer = fmt::layer().with_writer(file_appender);
             Some(file_layer)
         }

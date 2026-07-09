@@ -152,9 +152,9 @@ impl ArtifactRequest {
     }
 
     fn from(req: &HttpRequest) -> Option<Self> {
-        let hash = match req.match_info().get("hash") {
-            Some(h) => h.to_owned(),
-            None => return None,
+        let hash = {
+            let h = req.match_info().get("hash")?;
+            h.to_owned()
         };
 
         let team = extract_team_from_req(req);
