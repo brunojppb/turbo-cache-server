@@ -11,10 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Ensure rustfmt is installed and setup problem matcher
+      # Toolchain (channel + rustfmt/clippy) is pinned via rust-toolchain.toml
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
