@@ -44,10 +44,12 @@ jobs:
         run: echo "version=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: build binary
+        env:
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
         run: |
           docker pull --platform linux/arm64 brunojppb/turbo-cache-server-build:latest || true
           docker pull --platform linux/amd64 brunojppb/turbo-cache-server-build:latest || true
-          docker buildx build --build-arg RUST_VERSION=${{ steps.rust.outputs.version }} --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:${{ inputs.version }} --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:${{ inputs.cache-ref }} --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest .
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --platform linux/arm64,linux/amd64 --tag brunojppb/turbo-cache-server-build:${{ inputs.version }} --push --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:${{ inputs.cache-ref }} --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest .
 
       - name: create temp containers to copy binaries from
         run: |
@@ -91,8 +93,10 @@ jobs:
         run: echo "version=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: build macOS binary
+        env:
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
         run: |
-          docker buildx build --build-arg RUST_VERSION=${{ steps.rust.outputs.version }} --target macos-builder --tag turbo-cache-macos-build --load .
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --target macos-builder --tag turbo-cache-macos-build --load .
 
       - name: copy macOS binary
         run: |

@@ -84,8 +84,9 @@ jobs:
       - name: Build and push Docker image
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
         run: |
-          docker buildx build --build-arg RUST_VERSION=${{ steps.rust.outputs.version }} --platform linux/arm64,linux/amd64 --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --platform linux/arm64,linux/amd64 --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
 
       - name: Commit new binary
         env:
