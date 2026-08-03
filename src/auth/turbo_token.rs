@@ -6,6 +6,8 @@ use actix_web::{
     web::Data,
 };
 
+use secrecy::ExposeSecret;
+
 use crate::app_settings::AppSettings;
 
 #[tracing::instrument(name = "Request Auth", skip(req, next))]
@@ -18,7 +20,7 @@ pub async fn validate_turbo_token(
 
     match (&app_settings.turbo_token, maybe_req_token) {
         (Some(token), Some(header_token)) => {
-            let token = format!("Bearer {token}");
+            let token = format!("Bearer {}", token.expose_secret());
             if token == *header_token {
                 return next.call(req).await.map(|v| v.map_into_boxed_body());
             }
