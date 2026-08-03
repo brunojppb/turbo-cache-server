@@ -8,7 +8,7 @@ use futures::StreamExt;
 use serde::Serialize;
 use tokio_util::io::StreamReader;
 
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageError};
 
 /// When Turborepo is configured with `"signature": true` (turbo.json), the CLI
 /// computes an HMAC-SHA256 of each artifact and sends it as the `x-artifact-tag`
@@ -55,8 +55,12 @@ pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl R
     };
 
     match storage.file_exists(&artifact_info.file_path()).await {
-        true => HttpResponse::Ok().finish(),
-        false => HttpResponse::NotFound().finish(),
+        Ok(true) => HttpResponse::Ok().finish(),
+        Ok(false) => HttpResponse::NotFound().finish(),
+        Err(error) => {
+            tracing::error!(error = %error, "Could not check artifact on the bucket");
+            HttpResponse::InternalServerError().finish()
+        }
     }
 }
 
@@ -88,8 +92,8 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -
             HttpResponse::Created().json(artifact)
         }
         Err(error) => {
-            tracing::error!("Could not store file error={}", error);
-            HttpResponse::BadRequest().finish()
+            tracing::error!(error = %error, "Could not store artifact on the bucket");
+            HttpResponse::InternalServerError().finish()
         }
     }
 }
@@ -107,17 +111,23 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         storage.get_file(&file_path),
         storage.get_metadata(&file_path),
     );
-    let Some(response) = maybe_response else {
-        return HttpResponse::NotFound().finish();
+
+    let response = match maybe_response {
+        Ok(response) => response,
+        Err(StorageError::NotFound) => return HttpResponse::NotFound().finish(),
+        Err(error) => {
+            tracing::error!(error = %error, "Could not read artifact from the bucket");
+            return HttpResponse::InternalServerError().finish();
+        }
     };
 
     let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
         Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
         Err(error) => {
             tracing::error!(error = error.to_string(), "Chunk stream error");
-            Result::<Bytes, actix_web::error::Error>::Err(actix_web::error::ErrorBadRequest(
-                "Error while streaming artifact",
-            ))
+            Result::<Bytes, actix_web::error::Error>::Err(
+                actix_web::error::ErrorInternalServerError("Error while streaming artifact"),
+            )
         }
     });
 

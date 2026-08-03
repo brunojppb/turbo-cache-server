@@ -8,6 +8,7 @@ use reqwest::header::HeaderMap;
 async fn unauthorized_when_token_header_is_missing() {
     let test_app_config = TestAppConfig {
         turbo_token: Some(String::from("turbo-token")),
+        ..Default::default()
     };
     let app = spawn_app(Some(test_app_config)).await;
 
@@ -20,6 +21,7 @@ async fn unauthorized_when_token_header_is_missing() {
 async fn unauthorized_when_token_header_is_invalid() {
     let test_app_config = TestAppConfig {
         turbo_token: Some(String::from("turbo-token")),
+        ..Default::default()
     };
     let app = spawn_app(Some(test_app_config)).await;
 
@@ -37,6 +39,7 @@ async fn unauthorized_when_token_header_is_invalid() {
 async fn authorized_when_token_header_is_valid() {
     let test_app_config = TestAppConfig {
         turbo_token: Some(String::from("valid_token")),
+        ..Default::default()
     };
     let app = spawn_app(Some(test_app_config)).await;
 

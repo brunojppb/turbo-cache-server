@@ -18,8 +18,12 @@ pub struct TestApp {
     pub bucket_name: String,
 }
 
+#[derive(Default)]
 pub struct TestAppConfig {
     pub turbo_token: Option<String>,
+    /// Replaces the mock S3 endpoint. Point it at a dead address to exercise
+    /// the path where the bucket cannot be reached.
+    pub s3_endpoint: Option<String>,
 }
 
 #[allow(clippy::let_underscore_future)]
@@ -35,12 +39,14 @@ pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
     let mut app_settings = get_settings();
     let bucket_name = "mock_bucket".to_owned();
 
-    app_settings.s3_endpoint = Some(storage_server.uri());
+    let config = config.unwrap_or_default();
+
+    app_settings.s3_endpoint = Some(config.s3_endpoint.unwrap_or_else(|| storage_server.uri()));
     app_settings.s3_use_path_style = true;
     app_settings.s3_bucket_name.clone_from(&bucket_name);
     app_settings.s3_access_key = Some("mock_access_key".into());
     app_settings.s3_secret_key = Some("mock_secret_key".into());
-    app_settings.turbo_token = config.and_then(|v| v.turbo_token).map(SecretString::from);
+    app_settings.turbo_token = config.turbo_token.map(SecretString::from);
 
     let server = decay::startup::run(listener, app_settings).expect("Could not bind to listener");
     let _ = tokio::spawn(server);

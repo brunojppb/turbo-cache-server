@@ -4,7 +4,7 @@ use wiremock::{
     matchers::{header, method, path},
 };
 
-use crate::helpers::{TurboArtifactFileMock, spawn_app};
+use crate::helpers::{TestAppConfig, TurboArtifactFileMock, spawn_app};
 
 #[tokio::test]
 async fn upload_artifact_to_s3_test() {
@@ -77,6 +77,118 @@ async fn upload_artifact_forwards_artifact_tag_as_s3_metadata_test() {
         .expect("Failed to PUT artifact to the cache server");
 
     assert_eq!(response.status(), 201);
+}
+
+#[tokio::test]
+async fn upload_artifact_returns_server_error_when_s3_fails_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("PUT"))
+    .respond_with(ResponseTemplate::new(403).set_body_string("<Error>AccessDenied</Error>"))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .put(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .header("Content-Type", "application/octet-stream")
+        .body(file_mock.file_bytes.clone())
+        .send()
+        .await
+        .expect("Failed to PUT artifact to the cache server");
+
+    assert_eq!(response.status(), 500);
+}
+
+/// The case from issue #615: nothing answers on the configured endpoint, so the
+/// request never reaches a bucket.
+#[tokio::test]
+async fn upload_artifact_returns_server_error_when_s3_is_unreachable_test() {
+    let app = spawn_app(Some(TestAppConfig {
+        s3_endpoint: Some("http://127.0.0.1:1".to_owned()),
+        ..Default::default()
+    }))
+    .await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    let response = client
+        .put(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .header("Content-Type", "application/octet-stream")
+        .body(file_mock.file_bytes.clone())
+        .send()
+        .await
+        .expect("Failed to PUT artifact to the cache server");
+
+    assert_eq!(response.status(), 500);
+}
+
+#[tokio::test]
+async fn download_artifact_returns_server_error_when_s3_fails_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .respond_with(ResponseTemplate::new(500).set_body_string("<Error>InternalError</Error>"))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 500);
+}
+
+/// A cache miss must stay a 404 so Turborepo rebuilds instead of failing.
+#[tokio::test]
+async fn download_missing_artifact_returns_not_found_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .respond_with(ResponseTemplate::new(404))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 404);
 }
 
 #[tokio::test]
@@ -223,6 +335,27 @@ async fn artifact_does_not_exist_test() {
         .expect("Failed to HEAD and check artifact from cache server");
 
     assert_eq!(response.status(), 404);
+}
+
+#[tokio::test]
+async fn artifact_check_returns_server_error_when_s3_fails_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    mock_s3_head_req(&app, &file_mock, 503).await;
+
+    let response = client
+        .head(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to HEAD and check artifact from cache server");
+
+    assert_eq!(response.status(), 500);
 }
 
 /// A head request must be performed to the S3 bucket
