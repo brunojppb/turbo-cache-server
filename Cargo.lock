@@ -2387,7 +2387,7 @@ dependencies = [
 [[package]]
 name = "rust-s3"
 version = "0.37.2"
-source = "git+https://github.com/mfroembgen/rust-s3?rev=5d3234dd12069fb978568ffcd1a0d3f204fa8823#5d3234dd12069fb978568ffcd1a0d3f204fa8823"
+source = "git+https://github.com/mfroembgen/rust-s3?rev=97f98d0983d0dd5387ef451fa4cb3e3a8002c5d3#97f98d0983d0dd5387ef451fa4cb3e3a8002c5d3"
 dependencies = [
  "async-trait",
  "aws-creds",
