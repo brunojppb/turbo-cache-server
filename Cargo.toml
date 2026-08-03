@@ -18,7 +18,7 @@ name = "decay"
 [dependencies]
 actix-web = "4"
 dotenv = "0.15.0"
-rust-s3 = "0.37"
+rust-s3 = { git = "https://github.com/mfroembgen/rust-s3", rev = "5d3234dd12069fb978568ffcd1a0d3f204fa8823" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.7", features = ["io"] }

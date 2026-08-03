@@ -1,7 +1,7 @@
 use pretty_assertions::assert_eq;
 use wiremock::{
     Mock, ResponseTemplate,
-    matchers::{header, method, path},
+    matchers::{header, method, path, query_param},
 };
 
 use crate::helpers::{TestAppConfig, TurboArtifactFileMock, spawn_app};
@@ -77,6 +77,84 @@ async fn upload_artifact_forwards_artifact_tag_as_s3_metadata_test() {
         .expect("Failed to PUT artifact to the cache server");
 
     assert_eq!(response.status(), 201);
+}
+
+#[tokio::test]
+async fn upload_artifact_preserves_artifact_tag_at_multipart_boundary_test() {
+    for size in [
+        s3::bucket::CHUNK_SIZE - 1,
+        s3::bucket::CHUNK_SIZE,
+        8_715_039,
+    ] {
+        assert_artifact_tag_is_forwarded_to_s3(size).await;
+    }
+}
+
+async fn assert_artifact_tag_is_forwarded_to_s3(size: usize) {
+    let app = spawn_app(None).await;
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:synthetic-signature";
+    let object_path = format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    );
+
+    if size < s3::bucket::CHUNK_SIZE {
+        Mock::given(path(&object_path))
+            .and(method("PUT"))
+            .and(header("x-amz-meta-x-artifact-tag", artifact_tag))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&app.storage_server)
+            .await;
+    } else {
+        let upload_id = "synthetic-upload-id";
+        let initiate_response = format!(
+            "<InitiateMultipartUploadResult><Bucket>{}</Bucket><Key>{}/{}</Key><UploadId>{upload_id}</UploadId></InitiateMultipartUploadResult>",
+            app.bucket_name, file_mock.team, file_mock.file_hash
+        );
+
+        Mock::given(path(&object_path))
+            .and(method("POST"))
+            .and(query_param("uploads", ""))
+            .and(header("x-amz-meta-x-artifact-tag", artifact_tag))
+            .respond_with(ResponseTemplate::new(200).set_body_string(initiate_response))
+            .expect(1)
+            .mount(&app.storage_server)
+            .await;
+
+        Mock::given(path(&object_path))
+            .and(method("PUT"))
+            .and(query_param("uploadId", upload_id))
+            .respond_with(ResponseTemplate::new(200).insert_header("ETag", "synthetic-etag"))
+            .expect(size.div_ceil(s3::bucket::CHUNK_SIZE) as u64)
+            .mount(&app.storage_server)
+            .await;
+
+        Mock::given(path(&object_path))
+            .and(method("POST"))
+            .and(query_param("uploadId", upload_id))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&app.storage_server)
+            .await;
+    }
+
+    let response = client
+        .put(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            app.address, file_mock.file_hash, file_mock.team
+        ))
+        .header("Content-Type", "application/octet-stream")
+        .header("x-artifact-tag", artifact_tag)
+        .body(vec![33; size])
+        .send()
+        .await
+        .expect("Failed to PUT artifact to the cache server");
+
+    assert_eq!(response.status(), 201, "upload size: {size}");
+    app.storage_server.verify().await;
 }
 
 #[tokio::test]
