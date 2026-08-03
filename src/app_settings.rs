@@ -1,3 +1,4 @@
+use secrecy::SecretString;
 use std::env;
 use std::fmt;
 use std::str::FromStr;
@@ -60,8 +61,8 @@ pub struct AppSettings {
     /// Defaults to the loopback address
     pub host: String,
     pub port: u16,
-    pub s3_access_key: Option<String>,
-    pub s3_secret_key: Option<String>,
+    pub s3_access_key: Option<SecretString>,
+    pub s3_secret_key: Option<SecretString>,
     pub s3_endpoint: Option<String>,
     /// if your S3-compatible store does not support requests
     /// like https://bucket.hostname.domain/. Setting `s3_use_path_style`
@@ -72,7 +73,7 @@ pub struct AppSettings {
     pub s3_bucket_name: String,
     /// The server-side encryption algorithm to use for the S3 bucket.
     pub s3_server_side_encryption: Option<S3ServerSideEncryption>,
-    pub turbo_token: Option<String>,
+    pub turbo_token: Option<SecretString>,
 }
 
 pub fn get_settings() -> AppSettings {
@@ -83,8 +84,8 @@ pub fn get_settings() -> AppSettings {
 
     let host = env::var("HOST").unwrap_or("127.0.0.1".to_owned());
 
-    let s3_access_key = env::var("S3_ACCESS_KEY").ok();
-    let s3_secret_key = env::var("S3_SECRET_KEY").ok();
+    let s3_access_key = env::var("S3_ACCESS_KEY").ok().map(SecretString::from);
+    let s3_secret_key = env::var("S3_SECRET_KEY").ok().map(SecretString::from);
     let s3_region = env::var("S3_REGION").unwrap_or("eu-central-1".to_owned());
     let s3_endpoint = env::var("S3_ENDPOINT").ok();
     let s3_use_path_style = env::var("S3_USE_PATH_STYLE")
@@ -99,7 +100,7 @@ pub fn get_settings() -> AppSettings {
     // which creates a folder within the S3 bucket and uploads everything under that.
     let s3_bucket_name = env::var("S3_BUCKET_NAME").unwrap_or("turbo".to_owned());
 
-    let turbo_token = env::var("TURBO_TOKEN").ok();
+    let turbo_token = env::var("TURBO_TOKEN").ok().map(SecretString::from);
 
     AppSettings {
         host,

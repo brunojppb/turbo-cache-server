@@ -1,16 +1,27 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
+use secrecy::ExposeSecret;
 use tokio::io::AsyncRead;
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
 
 const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
 
-#[derive(Debug)]
 pub struct Storage {
     bucket: Box<Bucket>,
     server_side_encryption: Option<S3ServerSideEncryption>,
+}
+
+impl fmt::Debug for Storage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Storage")
+            .field("bucket_name", &self.bucket.name)
+            .field("region", &self.bucket.region)
+            .field("server_side_encryption", &self.server_side_encryption)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Storage {
@@ -27,9 +38,14 @@ impl Storage {
         };
 
         let credentials = match (&settings.s3_access_key, &settings.s3_secret_key) {
-            (Some(access_key), Some(secret_key)) => {
-                Credentials::new(Some(access_key), Some(secret_key), None, None, None).unwrap()
-            }
+            (Some(access_key), Some(secret_key)) => Credentials::new(
+                Some(access_key.expose_secret()),
+                Some(secret_key.expose_secret()),
+                None,
+                None,
+                None,
+            )
+            .unwrap(),
             // If your Credentials are handled via IAM policies and allow
             // your network to access S3 directly without any credentials setup
             // Then no need to setup credentials at all. Defaults should be fine
@@ -108,5 +124,36 @@ impl Storage {
     #[tracing::instrument(name = "check if S3 file exists")]
     pub async fn file_exists(&self, path: &str) -> bool {
         self.bucket.head_object(path).await.is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings_with_credentials() -> AppSettings {
+        AppSettings {
+            host: "127.0.0.1".to_owned(),
+            port: 8000,
+            s3_access_key: Some("super-secret-access-key".into()),
+            s3_secret_key: Some("super-secret-secret-key".into()),
+            s3_endpoint: Some("http://localhost:9000".to_owned()),
+            s3_use_path_style: true,
+            s3_region: "eu-central-1".to_owned(),
+            s3_bucket_name: "turbo".to_owned(),
+            s3_server_side_encryption: None,
+            turbo_token: None,
+        }
+    }
+
+    /// Storage ends up in tracing spans, which record it through `Debug`.
+    #[test]
+    fn debug_output_hides_s3_credentials() {
+        let storage = Storage::new(&settings_with_credentials());
+
+        let debug_output = format!("{storage:?}");
+
+        assert!(!debug_output.contains("super-secret-access-key"));
+        assert!(!debug_output.contains("super-secret-secret-key"));
     }
 }
