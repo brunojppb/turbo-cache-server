@@ -1,13 +1,48 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use s3::{Bucket, Region, creds::Credentials, request::ResponseDataStream};
+use s3::{Bucket, Region, creds::Credentials, error::S3Error, request::ResponseDataStream};
 use secrecy::ExposeSecret;
 use tokio::io::AsyncRead;
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
 
 const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
+
+#[derive(Debug)]
+pub enum StorageError {
+    /// The bucket answered, but holds no object under that path.
+    NotFound,
+    /// The bucket could not be reached, or rejected the request.
+    Unreachable(S3Error),
+}
+
+impl fmt::Display for StorageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "no such object in the bucket"),
+            Self::Unreachable(error) => write!(f, "S3 request failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for StorageError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NotFound => None,
+            Self::Unreachable(error) => Some(error),
+        }
+    }
+}
+
+impl From<S3Error> for StorageError {
+    fn from(error: S3Error) -> Self {
+        match error {
+            S3Error::HttpFailWithBody(404, _) => Self::NotFound,
+            other => Self::Unreachable(other),
+        }
+    }
+}
 
 pub struct Storage {
     bucket: Box<Bucket>,
@@ -67,9 +102,9 @@ impl Storage {
 
     /// Streams the file from the S3 bucket
     #[tracing::instrument(name = "get S3 file")]
-    pub async fn get_file(&self, path: &str) -> Option<ResponseDataStream> {
-        let maybe_file = self.bucket.get_object_stream(path).await;
-        maybe_file.ok()
+    pub async fn get_file(&self, path: &str) -> Result<ResponseDataStream, StorageError> {
+        let file = self.bucket.get_object_stream(path).await?;
+        Ok(file)
     }
 
     /// Returns the user metadata stored on the S3 object, if present.
@@ -94,7 +129,7 @@ impl Storage {
         path: &str,
         reader: &mut R,
         metadata: Option<&HashMap<String, String>>,
-    ) -> Result<(), String>
+    ) -> Result<(), StorageError>
     where
         R: AsyncRead + Unpin,
     {
@@ -114,16 +149,20 @@ impl Storage {
             }
         }
 
-        match builder.execute_stream(reader).await {
-            Ok(_response) => Ok(()),
-            Err(e) => Err(format!("Could not upload file: {e}")),
-        }
+        builder.execute_stream(reader).await?;
+        Ok(())
     }
 
     /// Checks whether the given file path exists on the S3 bucket
     #[tracing::instrument(name = "check if S3 file exists")]
-    pub async fn file_exists(&self, path: &str) -> bool {
-        self.bucket.head_object(path).await.is_ok()
+    pub async fn file_exists(&self, path: &str) -> Result<bool, StorageError> {
+        match self.bucket.head_object(path).await {
+            Ok(_) => Ok(true),
+            Err(error) => match StorageError::from(error) {
+                StorageError::NotFound => Ok(false),
+                error => Err(error),
+            },
+        }
     }
 }
 
