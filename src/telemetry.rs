@@ -27,6 +27,19 @@ fn is_otel_disabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve the service name reported to OpenTelemetry.
+/// The OTEL_SERVICE_NAME environment variable takes precedence over the
+/// given default, as required by the OpenTelemetry specification.
+fn otel_service_name(default: &str) -> String {
+    resolve_service_name(env::var("OTEL_SERVICE_NAME").ok(), default)
+}
+
+fn resolve_service_name(env_value: Option<String>, default: &str) -> String {
+    env_value
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| default.to_owned())
+}
+
 pub fn get_telemetry_subscriber<Sink>(
     name: &'static str,
     version: &'static str,
@@ -104,10 +117,12 @@ where
         .with(maybe_file_layer)
 }
 
-/// Generate a resource with all the common markers for our traces and metrics
-fn get_resource(service_name: &str, version: &str) -> Resource {
+/// Generate a resource with all the common markers for our traces and metrics.
+/// The service name defaults to the given name (the Cargo package name), but
+/// can be overridden with the OTEL_SERVICE_NAME environment variable.
+fn get_resource(default_service_name: &str, version: &str) -> Resource {
     Resource::builder()
-        .with_service_name(service_name.to_owned())
+        .with_service_name(otel_service_name(default_service_name))
         .with_attribute(KeyValue::new(SERVICE_VERSION, version.to_owned()))
         .build()
 }
@@ -139,10 +154,14 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
     let system = Arc::new(Mutex::new(System::new_all()));
     let current_pid = Pid::from_u32(std::process::id());
 
+    // Resolved once for the process lifetime, so leaking keeps the
+    // gauge callbacks free of per-observation allocations
+    let service_name: &'static str = Box::leak(otel_service_name(name).into_boxed_str());
+
     // Generate standard tags for all gauge events
-    let generate_tags = || {
+    let generate_tags = move || {
         [
-            KeyValue::new(SERVICE_NAME, name.to_owned()),
+            KeyValue::new(SERVICE_NAME, service_name),
             KeyValue::new(SERVICE_VERSION, version.to_owned()),
         ]
     };
@@ -215,4 +234,31 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
         _memory_gauge: memory_gauge,
         _virtual_memory_gauge: virtual_memory_gauge,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_service_name;
+
+    #[test]
+    fn uses_env_value_when_set() {
+        assert_eq!(
+            resolve_service_name(Some("my-cache".to_owned()), "decay"),
+            "my-cache"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_default_when_unset() {
+        assert_eq!(resolve_service_name(None, "decay"), "decay");
+    }
+
+    #[test]
+    fn falls_back_to_default_when_blank() {
+        assert_eq!(resolve_service_name(Some("".to_owned()), "decay"), "decay");
+        assert_eq!(
+            resolve_service_name(Some("   ".to_owned()), "decay"),
+            "decay"
+        );
+    }
 }
