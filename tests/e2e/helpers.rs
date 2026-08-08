@@ -65,12 +65,22 @@ static TRACING: LazyLock<()> = LazyLock::new(|| {
     let filter_level = String::from("debug");
 
     if std::env::var("TEST_LOG").is_ok() {
-        let subscriber =
-            get_telemetry_subscriber(subscriber_name, version, filter_level, std::io::stdout);
+        let subscriber = get_telemetry_subscriber(
+            subscriber_name,
+            subscriber_name.into(),
+            version,
+            filter_level,
+            std::io::stdout,
+        );
         init_telemetry_subscriber(subscriber);
     } else {
-        let subscriber =
-            get_telemetry_subscriber(subscriber_name, version, filter_level, std::io::sink);
+        let subscriber = get_telemetry_subscriber(
+            subscriber_name,
+            subscriber_name.into(),
+            version,
+            filter_level,
+            std::io::sink,
+        );
         init_telemetry_subscriber(subscriber);
     }
 });
