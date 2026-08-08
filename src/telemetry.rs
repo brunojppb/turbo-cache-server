@@ -27,8 +27,23 @@ fn is_otel_disabled() -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve the service name reported to OpenTelemetry.
+/// A non-blank OTEL_SERVICE_NAME environment variable takes precedence
+/// over the given default.
+pub fn otel_service_name(default: &str) -> Arc<str> {
+    resolve_service_name(env::var("OTEL_SERVICE_NAME").ok(), default).into()
+}
+
+fn resolve_service_name(env_value: Option<String>, default: &str) -> String {
+    env_value
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| default.to_owned())
+}
+
 pub fn get_telemetry_subscriber<Sink>(
     name: &'static str,
+    service_name: Arc<str>,
     version: &'static str,
     env_filter: String,
     sink: Sink,
@@ -82,13 +97,13 @@ where
             .with_id_generator(RandomIdGenerator::default())
             .with_max_events_per_span(64)
             .with_max_attributes_per_span(16)
-            .with_resource(get_resource(name, version))
+            .with_resource(get_resource(&service_name, version))
             .build()
             .tracer(name);
 
         let meter_provider = SdkMeterProvider::builder()
             .with_reader(periodic_reader)
-            .with_resource(get_resource(name, version))
+            .with_resource(get_resource(&service_name, version))
             .build();
 
         opentelemetry::global::set_meter_provider(meter_provider);
@@ -105,9 +120,9 @@ where
 }
 
 /// Generate a resource with all the common markers for our traces and metrics
-fn get_resource(service_name: &str, version: &str) -> Resource {
+fn get_resource(service_name: &Arc<str>, version: &str) -> Resource {
     Resource::builder()
-        .with_service_name(service_name.to_owned())
+        .with_service_name(Arc::clone(service_name))
         .with_attribute(KeyValue::new(SERVICE_VERSION, version.to_owned()))
         .build()
 }
@@ -128,9 +143,21 @@ pub struct SystemMetrics {
     _virtual_memory_gauge: ObservableGauge<u64>,
 }
 
+/// Standard tags for all gauge events.
+fn gauge_tags(service_name: &Arc<str>, version: &'static str) -> [KeyValue; 2] {
+    [
+        KeyValue::new(SERVICE_NAME, Arc::clone(service_name)),
+        KeyValue::new(SERVICE_VERSION, version),
+    ]
+}
+
 /// Initialize system metrics (CPU, RAM) using OpenTelemetry gauges.
 /// This should be called after the meter provider has been set globally.
-pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<SystemMetrics> {
+pub fn init_system_metrics(
+    name: &'static str,
+    service_name: Arc<str>,
+    version: &'static str,
+) -> Option<SystemMetrics> {
     if is_otel_disabled() {
         return None;
     }
@@ -139,16 +166,9 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
     let system = Arc::new(Mutex::new(System::new_all()));
     let current_pid = Pid::from_u32(std::process::id());
 
-    // Generate standard tags for all gauge events
-    let generate_tags = || {
-        [
-            KeyValue::new(SERVICE_NAME, name.to_owned()),
-            KeyValue::new(SERVICE_VERSION, version.to_owned()),
-        ]
-    };
-
     // CPU Usage Gauge (percentage)
     let system_cpu = Arc::clone(&system);
+    let service_name_cpu = Arc::clone(&service_name);
     let cpu_gauge = meter
         .f64_observable_gauge("system.cpu.utilization")
         .with_description("CPU utilization of the Decay process")
@@ -163,13 +183,14 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
 
             if let Some(process) = sys.process(current_pid) {
                 let cpu_usage = process.cpu_usage();
-                observer.observe(cpu_usage as f64, &generate_tags());
+                observer.observe(cpu_usage as f64, &gauge_tags(&service_name_cpu, version));
             }
         })
         .build();
 
     // Memory Usage Gauge (bytes)
     let system_mem = Arc::clone(&system);
+    let service_name_mem = Arc::clone(&service_name);
     let memory_gauge = meter
         .u64_observable_gauge("system.memory.usage")
         .with_description("Memory usage of the Decay process in bytes")
@@ -184,13 +205,14 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
 
             if let Some(process) = sys.process(current_pid) {
                 let memory_bytes = process.memory();
-                observer.observe(memory_bytes, &generate_tags());
+                observer.observe(memory_bytes, &gauge_tags(&service_name_mem, version));
             }
         })
         .build();
 
     // Virtual Memory Usage Gauge (bytes)
     let system_vmem = Arc::clone(&system);
+    let service_name_vmem = Arc::clone(&service_name);
     let virtual_memory_gauge = meter
         .u64_observable_gauge("system.memory.virtual")
         .with_description("Virtual memory usage of the Decay process in bytes")
@@ -205,7 +227,10 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
 
             if let Some(process) = sys.process(current_pid) {
                 let virtual_memory_bytes = process.virtual_memory();
-                observer.observe(virtual_memory_bytes, &generate_tags());
+                observer.observe(
+                    virtual_memory_bytes,
+                    &gauge_tags(&service_name_vmem, version),
+                );
             }
         })
         .build();
@@ -215,4 +240,39 @@ pub fn init_system_metrics(name: &'static str, version: &'static str) -> Option<
         _memory_gauge: memory_gauge,
         _virtual_memory_gauge: virtual_memory_gauge,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_service_name;
+
+    #[test]
+    fn uses_env_value_when_set() {
+        assert_eq!(
+            resolve_service_name(Some("my-cache".to_owned()), "decay"),
+            "my-cache"
+        );
+    }
+
+    #[test]
+    fn trims_surrounding_whitespace() {
+        assert_eq!(
+            resolve_service_name(Some("  my-cache  ".to_owned()), "decay"),
+            "my-cache"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_default_when_unset() {
+        assert_eq!(resolve_service_name(None, "decay"), "decay");
+    }
+
+    #[test]
+    fn falls_back_to_default_when_blank() {
+        assert_eq!(resolve_service_name(Some("".to_owned()), "decay"), "decay");
+        assert_eq!(
+            resolve_service_name(Some("   ".to_owned()), "decay"),
+            "decay"
+        );
+    }
 }

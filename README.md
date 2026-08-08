@@ -408,7 +408,11 @@ Turbo Cache Server includes built-in support for [OpenTelemetry](https://opentel
 
 ### Service Identification
 
-All traces and metrics are tagged with the service name **`decay`** (the internal Rust crate name). You'll see this identifier in your observability platform when filtering or querying telemetry data.
+By default, all traces and metrics are tagged with the service name **`decay`** (the internal Rust crate name). You'll see this identifier in your observability platform when filtering or querying telemetry data. To use a different identifier, set the [`OTEL_SERVICE_NAME`](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration) environment variable:
+
+```shell
+export OTEL_SERVICE_NAME="turbo-cache-server"
+```
 
 ### Supported Platforms
 
@@ -438,6 +442,10 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 # Or use HTTP protocol
 export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+
+# Optional: override the service name reported to your
+# observability platform (defaults to "decay")
+export OTEL_SERVICE_NAME="turbo-cache-server"
 ```
 
 For platform-specific configurations:
