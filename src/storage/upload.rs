@@ -20,8 +20,10 @@ pub(crate) const PART_SIZE: u64 = 8 * 1024 * 1024;
 /// 32 MiB.
 const PARTS_IN_FLIGHT: usize = 4;
 
-/// Ceiling on buffered transfer data across all uploads. The transfer manager
-/// otherwise reserves a share of detected RAM, which is wrong for a CI container.
+/// Ceiling on part data the transfer manager buffers for multipart uploads.
+/// The transfer manager otherwise reserves a share of detected RAM, which is
+/// wrong for a CI container. The per-request head buffer (up to PART_SIZE) is
+/// separate and additional, since it fills before the size decision runs.
 const MEMORY_BUDGET: usize = 128 * 1024 * 1024;
 
 #[derive(Debug)]
