@@ -1,3 +1,5 @@
+mod client;
+
 use std::collections::HashMap;
 use std::fmt;
 
