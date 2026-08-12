@@ -10,7 +10,7 @@ FROM --platform=$BUILDPLATFORM rust:alpine AS chef
 ARG RUST_VERSION
 WORKDIR /app
 ENV PKGCONFIG_SYSROOTDIR=/
-RUN apk add --no-cache musl-dev openssl-dev zig perl make && \
+RUN apk add --no-cache musl-dev openssl-dev zig perl make cmake && \
   rustup toolchain install ${RUST_VERSION} && rustup default ${RUST_VERSION} && \
   cargo install --locked cargo-zigbuild cargo-chef && \
   rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl

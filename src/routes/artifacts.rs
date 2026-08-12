@@ -6,6 +6,7 @@ use actix_web::{
 };
 use futures::StreamExt;
 use serde::Serialize;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::io::StreamReader;
 
 use crate::storage::{Storage, StorageError};
@@ -77,11 +78,21 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -
         .and_then(|value| value.to_str().ok())
         .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
 
-    let io_stream = body.map(|chunk| chunk.map_err(std::io::Error::other));
-    let mut reader = StreamReader::new(io_stream);
+    let content_length = req
+        .headers()
+        .get(actix_web::http::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+
+    let reader = send_reader(body);
 
     match storage
-        .put_file_stream(&artifact_info.file_path(), &mut reader, metadata.as_ref())
+        .put_file_stream(
+            &artifact_info.file_path(),
+            reader,
+            content_length,
+            metadata.as_ref(),
+        )
         .await
     {
         Ok(_) => {
@@ -91,11 +102,43 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -
 
             HttpResponse::Created().json(artifact)
         }
+        Err(StorageError::LengthRequired) => {
+            tracing::warn!("Artifact at or above the part size arrived without a Content-Length");
+            HttpResponse::build(actix_web::http::StatusCode::LENGTH_REQUIRED).finish()
+        }
         Err(error) => {
             tracing::error!(error = %error, "Could not store artifact on the bucket");
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+/// Chunks in flight between the request body and the S3 upload. Bounds the
+/// bridge's memory to this many payload chunks.
+const PAYLOAD_CHANNEL_DEPTH: usize = 4;
+
+/// Bridges the request body, which is not `Send`, to a reader the AWS transfer
+/// manager accepts.
+fn send_reader(
+    mut body: Payload,
+) -> StreamReader<ReceiverStream<Result<Bytes, std::io::Error>>, Bytes> {
+    let (tx, rx) = tokio::sync::mpsc::channel(PAYLOAD_CHANNEL_DEPTH);
+
+    actix_web::rt::spawn(async move {
+        while let Some(chunk) = body.next().await {
+            let chunk = chunk.map_err(std::io::Error::other);
+            let failed = chunk.is_err();
+            // A send error means the upload dropped the reader, so stop reading.
+            if tx.send(chunk).await.is_err() {
+                break;
+            }
+            if failed {
+                break;
+            }
+        }
+    });
+
+    StreamReader::new(ReceiverStream::new(rx))
 }
 
 #[tracing::instrument(name = "Read artifact", skip(storage))]
@@ -121,7 +164,7 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
         }
     };
 
-    let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
+    let stream = response.map(|maybe_chunk| match maybe_chunk {
         Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
         Err(error) => {
             tracing::error!(error = error.to_string(), "Chunk stream error");

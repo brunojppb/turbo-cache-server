@@ -66,6 +66,11 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             # Optional: Enable server-side encryption for stored artifacts.
             # Valid values: AES256, aws:kms, aws:kms:dsse, aws:fsx
             S3_SERVER_SIDE_ENCRYPTION: "AES256"
+            # Optional: Whether the S3 client sends CRC checksums.
+            # "when_required" (the default) keeps requests plain, which every
+            # S3-compatible store accepts. "when_supported" turns on the AWS
+            # SDK checksums. Use it only on real AWS S3.
+            S3_CHECKSUM_MODE: "when_required"
 
         # Now you can run your turborepo tasks and rely on the cache server
         # available in the background to provide previously built artifacts (cache hits)
@@ -101,11 +106,22 @@ docker run \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
   -e S3_SERVER_SIDE_ENCRYPTION=AES256 \
+  # Optional: "when_supported" turns on AWS SDK checksums. Real AWS only.
+  -e S3_CHECKSUM_MODE=when_required \
   # Optional: enables authentication. See "Authentication" below.
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server:latest
 ```
+
+## S3 Request Retries
+
+Turbo Cache Server uses the official AWS SDK for S3, which retries a
+transient 5xx error or a throttling response up to three times, with a
+backoff delay between each try. There is no environment variable for this;
+the SDK sets it. When the bucket fails or throttles requests, the error
+still reaches the caller, but only after these retries, so it arrives slower
+rather than sooner.
 
 ## Authentication
 
@@ -218,6 +234,9 @@ spec:
               value: "https://your-s3-endpoint.com"
             - name: S3_SERVER_SIDE_ENCRYPTION
               value: "AES256"
+            # Optional: "when_supported" turns on AWS SDK checksums. Real AWS only.
+            - name: S3_CHECKSUM_MODE
+              value: "when_required"
           resources:
             requests:
               memory: "128Mi"
@@ -394,6 +413,39 @@ You can also set a specific expiration date:
 - **Lifecycle rules apply to all objects** in the bucket. If you're using the bucket for other purposes, consider using a dedicated bucket for cache storage or add filters to your lifecycle rules.
 - **Expiration is asynchronous**: There may be a delay between the expiration date and when objects are actually removed.
 - **Versioning**: If your bucket has versioning enabled, expiration rules apply only to current object versions. You may need separate rules for noncurrent versions.
+
+### Cleaning Up Incomplete Multipart Uploads
+
+Artifacts of 8 MiB or more go to S3 as a multipart upload. If a client
+disconnects partway through one of these uploads, the parts already sent
+stay on the bucket. They cost storage even though no complete object exists.
+
+Add a lifecycle rule that removes incomplete multipart uploads after a number
+of days:
+
+```json
+{
+  "Rules": [
+    {
+      "Status": "Enabled",
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}
+```
+
+Apply it the same way as the other lifecycle rules above:
+
+```shell
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket your-bucket-name \
+  --lifecycle-configuration file://lifecycle.json
+```
+
+You can add this rule to the same `lifecycle.json` file as your expiration
+rules.
 
 ## OpenTelemetry Support
 
