@@ -1,4 +1,5 @@
 mod client;
+mod upload;
 
 use std::collections::HashMap;
 use std::fmt;
