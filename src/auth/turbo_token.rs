@@ -10,7 +10,6 @@ use secrecy::ExposeSecret;
 
 use crate::app_settings::AppSettings;
 
-#[tracing::instrument(name = "Request Auth", skip(req, next))]
 pub async fn validate_turbo_token(
     req: ServiceRequest,
     next: Next<impl MessageBody + 'static>,
@@ -24,12 +23,12 @@ pub async fn validate_turbo_token(
             if token == *header_token {
                 return next.call(req).await.map(|v| v.map_into_boxed_body());
             }
-            return Ok(unauthrorized(req));
+            Ok(unauthrorized(req))
         }
-        (Some(_token), None) => return Ok(unauthrorized(req)),
+        (Some(_token), None) => Ok(unauthrorized(req)),
         _ => {
             tracing::info!("No token provided. skipping...");
-            return next.call(req).await.map(|v| v.map_into_boxed_body());
+            next.call(req).await.map(|v| v.map_into_boxed_body())
         }
     }
 }
