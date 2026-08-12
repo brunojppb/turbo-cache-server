@@ -1,6 +1,3 @@
-// Wired into `Storage` when the read path moves to the AWS SDK.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::fmt;
 use std::io::Cursor;

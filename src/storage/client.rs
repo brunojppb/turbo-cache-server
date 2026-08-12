@@ -1,6 +1,3 @@
-// Wired into `Storage` when the read path moves to the AWS SDK.
-#![allow(dead_code)]
-
 use aws_credential_types::provider::{ProvideCredentials, future};
 use aws_sdk_s3::config::{
     BehaviorVersion, Credentials, Region, RequestChecksumCalculation, ResponseChecksumValidation,
