@@ -55,6 +55,32 @@ impl FromStr for S3ServerSideEncryption {
     }
 }
 
+/// Whether the S3 client sends and validates CRC checksums. The default keeps
+/// requests plain, because many S3-compatible stores reject the `aws-chunked`
+/// framing the checksum path uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum S3ChecksumMode {
+    #[default]
+    WhenRequired,
+    WhenSupported,
+}
+
+impl FromStr for S3ChecksumMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "when_required" => Ok(Self::WhenRequired),
+            "when_supported" => Ok(Self::WhenSupported),
+            _ => Err(format!(
+                "Invalid S3_CHECKSUM_MODE value: '{}'. \
+                 Valid values are: when_required, when_supported",
+                s
+            )),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppSettings {
     /// Host where to bind the server to
@@ -73,6 +99,8 @@ pub struct AppSettings {
     pub s3_bucket_name: String,
     /// The server-side encryption algorithm to use for the S3 bucket.
     pub s3_server_side_encryption: Option<S3ServerSideEncryption>,
+    /// Whether the S3 client sends and validates CRC checksums.
+    pub s3_checksum_mode: S3ChecksumMode,
     pub turbo_token: Option<SecretString>,
 }
 
@@ -95,6 +123,12 @@ pub fn get_settings() -> AppSettings {
         v.parse::<S3ServerSideEncryption>()
             .expect("Invalid S3_SERVER_SIDE_ENCRYPTION value")
     });
+    let s3_checksum_mode = env::var("S3_CHECKSUM_MODE")
+        .map(|v| {
+            v.parse::<S3ChecksumMode>()
+                .expect("Invalid S3_CHECKSUM_MODE value")
+        })
+        .unwrap_or_default();
 
     // by default,we scope Turborepo artifacts using the "TURBO_TEAM" name sent by turborepo
     // which creates a folder within the S3 bucket and uploads everything under that.
@@ -112,6 +146,7 @@ pub fn get_settings() -> AppSettings {
         s3_bucket_name,
         s3_use_path_style,
         s3_server_side_encryption,
+        s3_checksum_mode,
         turbo_token,
     }
 }
@@ -183,5 +218,33 @@ mod tests {
         let encryption = S3ServerSideEncryption::Aes256;
         let s: &str = encryption.as_ref();
         assert_eq!(s, "AES256");
+    }
+
+    #[test]
+    fn parse_when_required_checksum_mode() {
+        let result = "when_required".parse::<S3ChecksumMode>();
+        assert_eq!(result, Ok(S3ChecksumMode::WhenRequired));
+    }
+
+    #[test]
+    fn parse_when_supported_checksum_mode() {
+        let result = "when_supported".parse::<S3ChecksumMode>();
+        assert_eq!(result, Ok(S3ChecksumMode::WhenSupported));
+    }
+
+    #[test]
+    fn parse_invalid_checksum_mode_returns_error() {
+        let result = "sometimes".parse::<S3ChecksumMode>();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Invalid S3_CHECKSUM_MODE value")
+        );
+    }
+
+    #[test]
+    fn checksum_mode_defaults_to_when_required() {
+        assert_eq!(S3ChecksumMode::default(), S3ChecksumMode::WhenRequired);
     }
 }
