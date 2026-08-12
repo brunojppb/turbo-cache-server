@@ -181,6 +181,7 @@ mod tests {
             s3_region: "eu-central-1".to_owned(),
             s3_bucket_name: "turbo".to_owned(),
             s3_server_side_encryption: None,
+            s3_checksum_mode: crate::app_settings::S3ChecksumMode::WhenRequired,
             turbo_token: None,
         }
     }
