@@ -6,11 +6,14 @@ use actix_web::{
 };
 use std::net::TcpListener;
 
+use tracing_actix_web::TracingLogger;
+
 use crate::{
     app_settings::AppSettings,
     auth::turbo_token::validate_turbo_token,
+    http_span::DecayRootSpanBuilder,
     routes::{
-        artifacts_status, get_file, head_check_file, health_check, post_events,
+        HEALTH_CHECK_PATH, artifacts_status, get_file, head_check_file, health_check, post_events,
         post_list_team_artifacts, put_file,
     },
     storage::Storage,
@@ -36,7 +39,11 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
 
         App::new()
             .wrap(Logger::default())
-            .route("/management/health", web::get().to(health_check))
+            // Registered after Logger so it runs outermost: the "HTTP request"
+            // root span wraps the whole request and all handler/storage spans
+            // nest under it.
+            .wrap(TracingLogger::<DecayRootSpanBuilder>::new())
+            .route(HEALTH_CHECK_PATH, web::get().to(health_check))
             .service(artifacts_scope)
             .app_data(app_settings.clone())
             .app_data(storage.clone())
