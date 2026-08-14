@@ -9,6 +9,7 @@ use actix_web::{
 
 use secrecy::ExposeSecret;
 use serde::Serialize;
+use subtle::ConstantTimeEq;
 use tracing::instrument;
 
 use crate::app_settings::AppSettings;
@@ -51,7 +52,7 @@ pub async fn validate_turbo_token(
 
                 match provided {
                     None => Outcome::MissingHeader,
-                    Some(token) if token == expected.expose_secret() => Outcome::Valid,
+                    Some(token) if tokens_match(token, expected.expose_secret()) => Outcome::Valid,
                     Some(_) => Outcome::InvalidToken,
                 }
             }
@@ -90,6 +91,16 @@ fn parse_bearer_token(header_value: &str) -> Option<&str> {
 
     let token = token.trim_start();
     if token.is_empty() { None } else { Some(token) }
+}
+
+/// Compares a token against the configured one in constant time.
+/// A plain `==` stops at the first byte that differs, so its running time
+/// tells an attacker how much of a guess was correct.
+///
+/// The token length is not treated as a secret: `ct_eq` returns early when
+/// the lengths differ, which is the usual trade for this kind of check.
+fn tokens_match(provided: &str, expected: &str) -> bool {
+    provided.as_bytes().ct_eq(expected.as_bytes()).into()
 }
 
 fn unauthorized(req: ServiceRequest, error: &'static str) -> ServiceResponse {
@@ -146,5 +157,37 @@ mod tests {
     fn keeps_the_token_exact() {
         // Tokens are compared byte for byte, so no case folding on the token itself.
         assert_eq!(parse_bearer_token("Bearer SeCrEt"), Some("SeCrEt"));
+    }
+
+    #[test]
+    fn matches_an_identical_token() {
+        assert!(tokens_match("secret", "secret"));
+    }
+
+    #[test]
+    fn rejects_a_token_that_differs() {
+        assert!(!tokens_match("secret", "other!"));
+    }
+
+    #[test]
+    fn rejects_a_token_that_only_shares_a_prefix() {
+        assert!(!tokens_match("secret", "secret-and-more"));
+        assert!(!tokens_match("secret-and-more", "secret"));
+    }
+
+    #[test]
+    fn rejects_a_token_that_differs_in_case() {
+        assert!(!tokens_match("secret", "SECRET"));
+    }
+
+    #[test]
+    fn rejects_an_empty_token_against_a_real_one() {
+        assert!(!tokens_match("", "secret"));
+    }
+
+    #[test]
+    fn matches_a_token_with_multibyte_characters() {
+        assert!(tokens_match("sécret-🔑", "sécret-🔑"));
+        assert!(!tokens_match("sécret-🔑", "sécret-🔒"));
     }
 }

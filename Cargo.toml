@@ -48,6 +48,7 @@ sysinfo = "0.39"
 tonic = "0.14.2"
 secrecy = "0.10.3"
 tracing-actix-web = "0.7"
+subtle = "2"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
