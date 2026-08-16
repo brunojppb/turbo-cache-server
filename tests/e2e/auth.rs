@@ -53,15 +53,85 @@ async fn authorized_when_token_header_is_valid() {
     assert_eq!(response.status(), 200);
 }
 
+#[tokio::test]
+async fn authorized_when_the_bearer_scheme_is_lowercase() {
+    let test_app_config = TestAppConfig {
+        turbo_token: Some(String::from("valid_token")),
+        ..Default::default()
+    };
+    let app = spawn_app(Some(test_app_config)).await;
+
+    let response = check_endpoint_with_auth_header(
+        "/v8/artifacts/status",
+        &app,
+        Some(String::from("bearer valid_token")),
+    )
+    .await;
+
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn unauthorized_when_the_auth_scheme_is_not_bearer() {
+    let test_app_config = TestAppConfig {
+        turbo_token: Some(String::from("valid_token")),
+        ..Default::default()
+    };
+    let app = spawn_app(Some(test_app_config)).await;
+
+    let response = check_endpoint_with_auth_header(
+        "/v8/artifacts/status",
+        &app,
+        Some(String::from("Basic valid_token")),
+    )
+    .await;
+
+    assert_eq!(response.status(), 401);
+}
+
+#[tokio::test]
+async fn unauthorized_when_the_token_is_sent_without_a_scheme() {
+    let test_app_config = TestAppConfig {
+        turbo_token: Some(String::from("valid_token")),
+        ..Default::default()
+    };
+    let app = spawn_app(Some(test_app_config)).await;
+
+    let response = check_endpoint_with_auth_header(
+        "/v8/artifacts/status",
+        &app,
+        Some(String::from("valid_token")),
+    )
+    .await;
+
+    assert_eq!(response.status(), 401);
+}
+
+#[tokio::test]
+async fn authorized_when_no_token_is_configured_on_the_server() {
+    let app = spawn_app(None).await;
+
+    let response = check_endpoint("/v8/artifacts/status", &app, None).await;
+
+    assert_eq!(response.status(), 200);
+}
+
 async fn check_endpoint(endpoint: &str, app: &TestApp, turbo_token: Option<String>) -> Response {
+    let header_value = turbo_token.as_ref().map(|token| format!("Bearer {token}"));
+    check_endpoint_with_auth_header(endpoint, app, header_value).await
+}
+
+async fn check_endpoint_with_auth_header(
+    endpoint: &str,
+    app: &TestApp,
+    auth_header: Option<String>,
+) -> Response {
     let client = reqwest::Client::new();
 
-    let maybe_headers = turbo_token
-        .as_ref()
-        .map(|token| ("Authorization", format!("Bearer {token}")));
+    let maybe_headers = auth_header.map(|value| ("Authorization", value));
 
     client
-        .get(format!("{}{}", &app.address, endpoint))
+        .get(format!("{}{}", app.address, endpoint))
         .headers(
             maybe_headers
                 .map(|(key, value)| {

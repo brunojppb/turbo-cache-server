@@ -709,6 +709,7 @@ dependencies = [
  "rust-s3",
  "secrecy",
  "serde",
+ "subtle",
  "sysinfo 0.39.6",
  "tokio",
  "tokio-util",

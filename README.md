@@ -122,6 +122,16 @@ server. When set, every incoming request must include an
 and send this header automatically, so the server-side and client-side
 values must match.
 
+The server reads the `Bearer` scheme in any case, as HTTP requires. It
+compares the token itself in constant time, so the time a rejection takes
+does not tell an attacker how much of a guess was correct. A rejected
+request returns a JSON body that says whether the header was missing or the
+token was wrong:
+
+```json
+{ "error": "Invalid TURBO_TOKEN" }
+```
+
 When `TURBO_TOKEN` is unset on the server, the authentication middleware is
 bypassed entirely and any `Authorization` header on incoming requests is
 ignored.
