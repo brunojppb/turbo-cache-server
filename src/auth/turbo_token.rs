@@ -10,7 +10,6 @@ use actix_web::{
 use secrecy::ExposeSecret;
 use serde::Serialize;
 use subtle::ConstantTimeEq;
-use tracing::instrument;
 
 use crate::app_settings::AppSettings;
 
@@ -30,7 +29,6 @@ enum Outcome {
 
 /// Rejects requests that do not carry the configured `TURBO_TOKEN` as a Bearer token.
 /// Lets every request through when no token is configured.
-#[instrument(name = "validate_turbo_token", skip_all)]
 pub async fn validate_turbo_token(
     req: ServiceRequest,
     next: Next<impl MessageBody + 'static>,
