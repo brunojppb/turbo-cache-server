@@ -356,6 +356,92 @@ async fn download_artifact_returns_artifact_tag_from_s3_metadata_test() {
     );
 }
 
+/// The Turborepo client reads `x-artifact-duration` off the download to report
+/// the time the cache saved.
+/// See: https://turborepo.dev/api/remote-cache-spec (GET /artifacts/{hash})
+#[tokio::test]
+async fn download_artifact_returns_artifact_duration_from_s3_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("GET"))
+    .respond_with(ResponseTemplate::new(200).set_body_bytes(file_mock.file_bytes.clone()))
+    .mount(&app.storage_server)
+    .await;
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(ResponseTemplate::new(200).insert_header("x-amz-meta-x-artifact-duration", "1234"))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.headers().get("x-artifact-duration").unwrap(),
+        "1234"
+    );
+}
+
+/// Another writer may share the bucket, so the download path does not trust the
+/// stored value. Turborepo fails the whole read on a duration it cannot parse.
+#[tokio::test]
+async fn download_artifact_omits_malformed_artifact_duration_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("GET"))
+    .respond_with(ResponseTemplate::new(200).set_body_bytes(file_mock.file_bytes.clone()))
+    .mount(&app.storage_server)
+    .await;
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(
+        ResponseTemplate::new(200).insert_header("x-amz-meta-x-artifact-duration", "not-a-number"),
+    )
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 200);
+    assert!(response.headers().get("x-artifact-duration").is_none());
+}
+
 #[tokio::test]
 async fn list_team_artifacts_test() {
     let app = spawn_app(None).await;

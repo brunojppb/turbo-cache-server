@@ -107,17 +107,18 @@ impl Storage {
         Ok(file)
     }
 
-    /// Returns the user metadata stored on the S3 object, if present.
+    /// Returns the user metadata stored on the S3 object.
+    /// A failed lookup must not fail an otherwise good download, so it reports
+    /// no metadata rather than an error.
     #[tracing::instrument(name = "get S3 object metadata")]
-    pub async fn get_metadata(&self, path: &str) -> Option<HashMap<String, String>> {
-        let (head_result, _status) = match self.bucket.head_object(path).await {
-            Ok(result) => result,
+    pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
+        match self.bucket.head_object(path).await {
+            Ok((head_result, _status)) => head_result.metadata.unwrap_or_default(),
             Err(error) => {
                 tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
-                return None;
+                HashMap::new()
             }
-        };
-        head_result.metadata
+        }
     }
 
     /// Streams the given data to the S3 bucket under the given path.

@@ -204,9 +204,7 @@ pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responde
 
     let mut builder = HttpResponse::Ok();
 
-    if let Some(tag) = metadata.as_ref().and_then(|m| m.get(ARTIFACT_TAG_HEADER)) {
-        builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
-    }
+    ArtifactMetadata::from_storage(&metadata).apply(&mut builder);
 
     builder.streaming(stream)
 }
