@@ -121,14 +121,14 @@ impl Storage {
     }
 
     /// Streams the given data to the S3 bucket under the given path.
-    /// When `metadata` is provided, each key-value pair is persisted as S3 user
-    /// metadata (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
+    /// Each metadata key-value pair is persisted as S3 user metadata
+    /// (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
     #[tracing::instrument(name = "put S3 file stream", skip(reader))]
     pub async fn put_file_stream<R>(
         &self,
         path: &str,
         reader: &mut R,
-        metadata: Option<&HashMap<String, String>>,
+        metadata: &HashMap<String, String>,
     ) -> Result<(), StorageError>
     where
         R: AsyncRead + Unpin,
@@ -141,12 +141,10 @@ impl Storage {
                 .expect("Invalid server-side encryption header value");
         }
 
-        if let Some(metadata) = metadata {
-            for (key, value) in metadata {
-                builder = builder
-                    .with_metadata(key, value)
-                    .expect("Invalid metadata value");
-            }
+        for (key, value) in metadata {
+            builder = builder
+                .with_metadata(key, value)
+                .expect("Invalid metadata value");
         }
 
         builder.execute_stream(reader).await?;

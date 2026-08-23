@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use actix_web::{
-    HttpRequest, HttpResponse, Responder,
+    HttpRequest, HttpResponse, HttpResponseBuilder, Responder,
     web::{Bytes, Data, Payload, Query},
 };
 use futures::StreamExt;
@@ -17,6 +17,81 @@ use crate::storage::{Storage, StorageError};
 /// download fails signature verification and is treated as a cache miss.
 /// See: https://turborepo.dev/api/remote-cache-spec
 const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
+
+/// Turborepo sends the task run time on PUT and reads it back on GET and HEAD to
+/// report how much time the cache saved. Without it, every remote cache hit
+/// reports zero time saved.
+/// See: https://turborepo.dev/api/remote-cache-spec
+const ARTIFACT_DURATION_HEADER: &str = "x-artifact-duration";
+
+/// The artifact headers Turborepo sends on upload and expects back on download.
+/// They travel as S3 user metadata.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ArtifactMetadata {
+    tag: Option<String>,
+    duration: Option<u64>,
+}
+
+impl ArtifactMetadata {
+    /// Reads the artifact headers from an upload request.
+    fn from_request(req: &HttpRequest) -> Self {
+        let header = |name: &str| req.headers().get(name).and_then(|value| value.to_str().ok());
+
+        Self {
+            tag: header(ARTIFACT_TAG_HEADER).map(str::to_owned),
+            duration: header(ARTIFACT_DURATION_HEADER).and_then(parse_duration),
+        }
+    }
+
+    /// Reads the artifact headers from the metadata stored on the S3 object.
+    fn from_storage(metadata: &HashMap<String, String>) -> Self {
+        Self {
+            tag: metadata.get(ARTIFACT_TAG_HEADER).cloned(),
+            duration: metadata
+                .get(ARTIFACT_DURATION_HEADER)
+                .map(String::as_str)
+                .and_then(parse_duration),
+        }
+    }
+
+    /// The key-value pairs to persist as S3 user metadata.
+    fn to_storage(&self) -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+
+        if let Some(tag) = &self.tag {
+            metadata.insert(ARTIFACT_TAG_HEADER.to_owned(), tag.clone());
+        }
+
+        if let Some(duration) = self.duration {
+            metadata.insert(ARTIFACT_DURATION_HEADER.to_owned(), duration.to_string());
+        }
+
+        metadata
+    }
+
+    /// Copies the artifact headers onto a download response.
+    fn apply(&self, builder: &mut HttpResponseBuilder) {
+        if let Some(tag) = &self.tag {
+            builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
+        }
+
+        if let Some(duration) = self.duration {
+            builder.insert_header((ARTIFACT_DURATION_HEADER, duration.to_string()));
+        }
+    }
+}
+
+/// Turborepo fails the whole cache read on a duration it cannot parse, so a
+/// value the server cannot vouch for is dropped instead of passed on.
+fn parse_duration(raw: &str) -> Option<u64> {
+    match raw.parse::<u64>() {
+        Ok(duration) => Some(duration),
+        Err(_) => {
+            tracing::warn!(value = raw, "Ignoring malformed x-artifact-duration");
+            None
+        }
+    }
+}
 
 #[derive(Serialize)]
 struct Artifact {
@@ -71,17 +146,13 @@ pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -
         None => return HttpResponse::BadRequest().finish(),
     };
 
-    let metadata = req
-        .headers()
-        .get(ARTIFACT_TAG_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(|tag| HashMap::from([(ARTIFACT_TAG_HEADER.to_owned(), tag.to_owned())]));
+    let metadata = ArtifactMetadata::from_request(&req).to_storage();
 
     let io_stream = body.map(|chunk| chunk.map_err(std::io::Error::other));
     let mut reader = StreamReader::new(io_stream);
 
     match storage
-        .put_file_stream(&artifact_info.file_path(), &mut reader, metadata.as_ref())
+        .put_file_stream(&artifact_info.file_path(), &mut reader, &metadata)
         .await
     {
         Ok(_) => {
