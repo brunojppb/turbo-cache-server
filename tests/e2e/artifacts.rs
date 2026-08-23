@@ -418,7 +418,9 @@ async fn download_artifact_returns_artifact_duration_from_s3_metadata_test() {
         app.bucket_name, file_mock.team, file_mock.file_hash
     )))
     .and(method("HEAD"))
-    .respond_with(ResponseTemplate::new(200).insert_header("x-amz-meta-x-artifact-duration", "1234"))
+    .respond_with(
+        ResponseTemplate::new(200).insert_header("x-amz-meta-x-artifact-duration", "1234"),
+    )
     .mount(&app.storage_server)
     .await;
 

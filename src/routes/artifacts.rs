@@ -35,7 +35,11 @@ struct ArtifactMetadata {
 impl ArtifactMetadata {
     /// Reads the artifact headers from an upload request.
     fn from_request(req: &HttpRequest) -> Self {
-        let header = |name: &str| req.headers().get(name).and_then(|value| value.to_str().ok());
+        let header = |name: &str| {
+            req.headers()
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+        };
 
         Self {
             tag: header(ARTIFACT_TAG_HEADER).map(str::to_owned),
