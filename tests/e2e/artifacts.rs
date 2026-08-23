@@ -478,6 +478,50 @@ async fn artifact_exists_test() {
     assert_eq!(response.status(), 200);
 }
 
+/// The Turborepo client reads the artifact headers off the exists check as well
+/// as the download. See: https://turborepo.dev/api/remote-cache-spec
+/// (HEAD /artifacts/{hash})
+#[tokio::test]
+async fn artifact_exists_returns_artifact_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:abc123";
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(
+        ResponseTemplate::new(200)
+            .insert_header("x-amz-meta-x-artifact-tag", artifact_tag)
+            .insert_header("x-amz-meta-x-artifact-duration", "1234"),
+    )
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .head(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            &app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to HEAD and check artifact from cache server");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.headers().get("x-artifact-duration").unwrap(),
+        "1234"
+    );
+    assert_eq!(
+        response.headers().get("x-artifact-tag").unwrap(),
+        artifact_tag
+    );
+}
+
 #[tokio::test]
 async fn artifact_does_not_exist_test() {
     let app = spawn_app(None).await;

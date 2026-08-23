@@ -129,9 +129,13 @@ pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl R
         None => return HttpResponse::NotFound().finish(),
     };
 
-    match storage.file_exists(&artifact_info.file_path()).await {
-        Ok(true) => HttpResponse::Ok().finish(),
-        Ok(false) => HttpResponse::NotFound().finish(),
+    match storage.head_file(&artifact_info.file_path()).await {
+        Ok(metadata) => {
+            let mut builder = HttpResponse::Ok();
+            ArtifactMetadata::from_storage(&metadata).apply(&mut builder);
+            builder.finish()
+        }
+        Err(StorageError::NotFound) => HttpResponse::NotFound().finish(),
         Err(error) => {
             tracing::error!(error = %error, "Could not check artifact on the bucket");
             HttpResponse::InternalServerError().finish()

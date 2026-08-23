@@ -107,13 +107,21 @@ impl Storage {
         Ok(file)
     }
 
+    /// Returns the user metadata stored on the S3 object, or reports that the
+    /// object is missing.
+    #[tracing::instrument(name = "head S3 file")]
+    pub async fn head_file(&self, path: &str) -> Result<HashMap<String, String>, StorageError> {
+        let (head_result, _status) = self.bucket.head_object(path).await?;
+        Ok(head_result.metadata.unwrap_or_default())
+    }
+
     /// Returns the user metadata stored on the S3 object.
     /// A failed lookup must not fail an otherwise good download, so it reports
     /// no metadata rather than an error.
     #[tracing::instrument(name = "get S3 object metadata")]
     pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
-        match self.bucket.head_object(path).await {
-            Ok((head_result, _status)) => head_result.metadata.unwrap_or_default(),
+        match self.head_file(path).await {
+            Ok(metadata) => metadata,
             Err(error) => {
                 tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
                 HashMap::new()
@@ -150,18 +158,6 @@ impl Storage {
 
         builder.execute_stream(reader).await?;
         Ok(())
-    }
-
-    /// Checks whether the given file path exists on the S3 bucket
-    #[tracing::instrument(name = "check if S3 file exists")]
-    pub async fn file_exists(&self, path: &str) -> Result<bool, StorageError> {
-        match self.bucket.head_object(path).await {
-            Ok(_) => Ok(true),
-            Err(error) => match StorageError::from(error) {
-                StorageError::NotFound => Ok(false),
-                error => Err(error),
-            },
-        }
     }
 }
 
