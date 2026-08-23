@@ -107,28 +107,37 @@ impl Storage {
         Ok(file)
     }
 
-    /// Returns the user metadata stored on the S3 object, if present.
+    /// Returns the user metadata stored on the S3 object, or reports that the
+    /// object is missing.
+    #[tracing::instrument(name = "head S3 file")]
+    pub async fn head_file(&self, path: &str) -> Result<HashMap<String, String>, StorageError> {
+        let (head_result, _status) = self.bucket.head_object(path).await?;
+        Ok(head_result.metadata.unwrap_or_default())
+    }
+
+    /// Returns the user metadata stored on the S3 object.
+    /// A failed lookup must not fail an otherwise good download, so it reports
+    /// no metadata rather than an error.
     #[tracing::instrument(name = "get S3 object metadata")]
-    pub async fn get_metadata(&self, path: &str) -> Option<HashMap<String, String>> {
-        let (head_result, _status) = match self.bucket.head_object(path).await {
-            Ok(result) => result,
+    pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
+        match self.head_file(path).await {
+            Ok(metadata) => metadata,
             Err(error) => {
                 tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
-                return None;
+                HashMap::new()
             }
-        };
-        head_result.metadata
+        }
     }
 
     /// Streams the given data to the S3 bucket under the given path.
-    /// When `metadata` is provided, each key-value pair is persisted as S3 user
-    /// metadata (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
+    /// Each metadata key-value pair is persisted as S3 user metadata
+    /// (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
     #[tracing::instrument(name = "put S3 file stream", skip(reader))]
     pub async fn put_file_stream<R>(
         &self,
         path: &str,
         reader: &mut R,
-        metadata: Option<&HashMap<String, String>>,
+        metadata: &HashMap<String, String>,
     ) -> Result<(), StorageError>
     where
         R: AsyncRead + Unpin,
@@ -141,28 +150,14 @@ impl Storage {
                 .expect("Invalid server-side encryption header value");
         }
 
-        if let Some(metadata) = metadata {
-            for (key, value) in metadata {
-                builder = builder
-                    .with_metadata(key, value)
-                    .expect("Invalid metadata value");
-            }
+        for (key, value) in metadata {
+            builder = builder
+                .with_metadata(key, value)
+                .expect("Invalid metadata value");
         }
 
         builder.execute_stream(reader).await?;
         Ok(())
-    }
-
-    /// Checks whether the given file path exists on the S3 bucket
-    #[tracing::instrument(name = "check if S3 file exists")]
-    pub async fn file_exists(&self, path: &str) -> Result<bool, StorageError> {
-        match self.bucket.head_object(path).await {
-            Ok(_) => Ok(true),
-            Err(error) => match StorageError::from(error) {
-                StorageError::NotFound => Ok(false),
-                error => Err(error),
-            },
-        }
     }
 }
 
