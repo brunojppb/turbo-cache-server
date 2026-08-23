@@ -1,18 +1,25 @@
 use std::collections::HashMap;
+use std::fmt;
+use std::future::{Ready, ready};
 
 use actix_web::{
-    HttpRequest, HttpResponse, HttpResponseBuilder, Responder,
-    web::{Bytes, Data, Payload, Query},
+    FromRequest, HttpRequest, HttpResponse, HttpResponseBuilder, Responder, ResponseError, dev,
+    http::{Method, StatusCode},
+    web::{Data, Payload, Query},
 };
 use futures::StreamExt;
 use serde::Serialize;
 use tokio_util::io::StreamReader;
 
 use crate::domain::{
-    ARTIFACT_DURATION_HEADER, ARTIFACT_TAG_HEADER, ArtifactId, ArtifactMetadata,
+    ARTIFACT_DURATION_HEADER, ARTIFACT_TAG_HEADER, ArtifactId, ArtifactMetadata, CacheError,
     artifact::parse_duration,
 };
-use crate::storage::{Storage, StorageError};
+use crate::storage::Storage;
+use crate::usecases::ArtifactCache;
+
+/// The concrete cache the server wires up in `startup::run`.
+pub type Cache = ArtifactCache<Storage>;
 
 /// Reads the artifact headers from an upload request.
 fn metadata_from_headers(req: &HttpRequest) -> ArtifactMetadata {
@@ -36,6 +43,58 @@ fn apply_metadata_headers(metadata: &ArtifactMetadata, builder: &mut HttpRespons
 
     if let Some(duration) = metadata.duration {
         builder.insert_header((ARTIFACT_DURATION_HEADER, duration.to_string()));
+    }
+}
+
+/// Rejection for a request whose path holds no artifact hash.
+#[derive(Debug)]
+pub struct InvalidArtifactPath {
+    status: StatusCode,
+}
+
+impl fmt::Display for InvalidArtifactPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "request path holds no artifact hash")
+    }
+}
+
+impl ResponseError for InvalidArtifactPath {
+    fn status_code(&self) -> StatusCode {
+        self.status
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::new(self.status)
+    }
+}
+
+impl FromRequest for ArtifactId {
+    type Error = InvalidArtifactPath;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut dev::Payload) -> Self::Future {
+        let id = req
+            .match_info()
+            .get("hash")
+            .filter(|hash| !hash.is_empty())
+            .map(|hash| ArtifactId {
+                team: extract_team_from_req(req),
+                hash: hash.to_owned(),
+            });
+
+        match id {
+            Some(id) => ready(Ok(id)),
+            // Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+            None => {
+                let status = if req.method() == Method::PUT {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::NOT_FOUND
+                };
+
+                ready(Err(InvalidArtifactPath { status }))
+            }
+        }
     }
 }
 
@@ -68,95 +127,55 @@ pub async fn post_list_team_artifacts(req: HttpRequest) -> impl Responder {
     HttpResponse::Ok().json(&EMPTY_HASHES)
 }
 
-#[tracing::instrument(name = "Check artifact", skip(req, storage))]
-pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
-    let artifact_id = match artifact_id_from_req(&req) {
-        Some(id) => id,
-        None => return HttpResponse::NotFound().finish(),
-    };
+#[tracing::instrument(name = "Check artifact", skip(cache))]
+pub async fn head_check_file(
+    id: ArtifactId,
+    cache: Data<Cache>,
+) -> Result<HttpResponse, CacheError> {
+    let metadata = cache.check(&id).await?;
 
-    match storage.head_file(&artifact_id.object_path()).await {
-        Ok(metadata) => {
-            let mut builder = HttpResponse::Ok();
-            apply_metadata_headers(&ArtifactMetadata::from_key_values(metadata), &mut builder);
-            builder.finish()
-        }
-        Err(StorageError::NotFound) => HttpResponse::NotFound().finish(),
-        Err(error) => {
-            tracing::error!(error = %error, "Could not check artifact on the bucket");
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    let mut builder = HttpResponse::Ok();
+    apply_metadata_headers(&metadata, &mut builder);
+
+    Ok(builder.finish())
 }
 
-#[tracing::instrument(name = "Store artifact", skip(storage, body))]
-pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -> impl Responder {
-    let artifact_id = match artifact_id_from_req(&req) {
-        Some(id) => id,
-        None => return HttpResponse::BadRequest().finish(),
-    };
-
-    let metadata = metadata_from_headers(&req).into_key_values();
+#[tracing::instrument(name = "Store artifact", skip(req, cache, body))]
+pub async fn put_file(
+    req: HttpRequest,
+    id: ArtifactId,
+    cache: Data<Cache>,
+    body: Payload,
+) -> Result<HttpResponse, CacheError> {
+    let metadata = metadata_from_headers(&req);
 
     let io_stream = body.map(|chunk| chunk.map_err(std::io::Error::other));
     let mut reader = StreamReader::new(io_stream);
 
-    match storage
-        .put_file_stream(&artifact_id.object_path(), &mut reader, &metadata)
-        .await
-    {
-        Ok(_) => {
-            let artifact = Artifact {
-                filename: artifact_id.hash.clone(),
-            };
+    cache.store(&id, metadata, &mut reader).await?;
 
-            HttpResponse::Created().json(artifact)
-        }
-        Err(error) => {
-            tracing::error!(error = %error, "Could not store artifact on the bucket");
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    let artifact = Artifact {
+        filename: id.hash.clone(),
+    };
+
+    Ok(HttpResponse::Created().json(artifact))
 }
 
-#[tracing::instrument(name = "Read artifact", skip(storage))]
-pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
-    let artifact_id = match artifact_id_from_req(&req) {
-        Some(id) => id,
-        None => return HttpResponse::NotFound().finish(),
-    };
+#[tracing::instrument(name = "Read artifact", skip(cache))]
+pub async fn get_file(id: ArtifactId, cache: Data<Cache>) -> Result<HttpResponse, CacheError> {
+    let (body, metadata) = cache.fetch(&id).await?;
 
-    let file_path = artifact_id.object_path();
-
-    let (maybe_response, metadata) = tokio::join!(
-        storage.get_file(&file_path),
-        storage.get_metadata(&file_path),
-    );
-
-    let response = match maybe_response {
-        Ok(response) => response,
-        Err(StorageError::NotFound) => return HttpResponse::NotFound().finish(),
-        Err(error) => {
-            tracing::error!(error = %error, "Could not read artifact from the bucket");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
-        Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
-        Err(error) => {
-            tracing::error!(error = error.to_string(), "Chunk stream error");
-            Result::<Bytes, actix_web::error::Error>::Err(
-                actix_web::error::ErrorInternalServerError("Error while streaming artifact"),
-            )
-        }
+    let stream = body.map(|maybe_chunk| {
+        maybe_chunk.map_err(|error| {
+            tracing::error!(error = %error, "Chunk stream error");
+            actix_web::error::ErrorInternalServerError("Error while streaming artifact")
+        })
     });
 
     let mut builder = HttpResponse::Ok();
+    apply_metadata_headers(&metadata, &mut builder);
 
-    apply_metadata_headers(&ArtifactMetadata::from_key_values(metadata), &mut builder);
-
-    builder.streaming(stream)
+    Ok(builder.streaming(stream))
 }
 
 fn extract_team_from_req(req: &HttpRequest) -> String {
@@ -167,13 +186,6 @@ fn extract_team_from_req(req: &HttpRequest) -> String {
         .or_else(|| query_string.get("teamId"))
         .unwrap_or(&default_team_name)
         .to_string()
-}
-
-fn artifact_id_from_req(req: &HttpRequest) -> Option<ArtifactId> {
-    let hash = req.match_info().get("hash")?.to_owned();
-    let team = extract_team_from_req(req);
-
-    Some(ArtifactId { team, hash })
 }
 
 const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
@@ -237,5 +249,48 @@ mod tests {
             metadata.get(ARTIFACT_DURATION_HEADER).map(String::as_str),
             Some("7")
         );
+    }
+
+    #[tokio::test]
+    async fn extracts_the_artifact_id_from_path_and_query() {
+        let req = TestRequest::with_uri("/v8/artifacts/abc123?slug=my-team")
+            .param("hash", "abc123")
+            .to_http_request();
+
+        let id = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap();
+
+        assert_eq!(id.team, "my-team");
+        assert_eq!(id.hash, "abc123");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_no_team_without_a_team_query() {
+        let req = TestRequest::with_uri("/v8/artifacts/abc123")
+            .param("hash", "abc123")
+            .to_http_request();
+
+        let id = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap();
+
+        assert_eq!(id.team, "no_team");
+    }
+
+    /// Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+    #[tokio::test]
+    async fn rejects_a_missing_hash_with_the_method_status() {
+        let req = TestRequest::default().method(Method::PUT).to_http_request();
+        let error = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status_code(), StatusCode::BAD_REQUEST);
+
+        let req = TestRequest::default().to_http_request();
+        let error = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
     }
 }
