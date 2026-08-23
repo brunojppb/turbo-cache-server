@@ -102,7 +102,7 @@ async fn upload_artifact_forwards_artifact_duration_as_s3_metadata_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .header("x-artifact-duration", "1234")
@@ -136,7 +136,7 @@ async fn upload_artifact_drops_malformed_artifact_duration_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .header("x-artifact-duration", "not-a-number")
@@ -153,6 +153,44 @@ async fn upload_artifact_drops_malformed_artifact_duration_test() {
             .headers
             .contains_key("x-amz-meta-x-artifact-duration")
     );
+}
+
+/// A repository with `"signature": true` sends both artifact headers on the
+/// same upload, so they must not displace each other in the object metadata.
+/// See: https://turborepo.dev/api/remote-cache-spec (PUT /artifacts/{hash})
+#[tokio::test]
+async fn upload_artifact_forwards_both_artifact_headers_as_s3_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:abc123";
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("PUT"))
+    .and(header("x-amz-meta-x-artifact-tag", artifact_tag))
+    .and(header("x-amz-meta-x-artifact-duration", "1234"))
+    .respond_with(ResponseTemplate::new(201))
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .put(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            app.address, file_mock.file_hash, file_mock.team
+        ))
+        .header("Content-Type", "application/octet-stream")
+        .header("x-artifact-tag", artifact_tag)
+        .header("x-artifact-duration", "1234")
+        .body(file_mock.file_bytes.clone())
+        .send()
+        .await
+        .expect("Failed to PUT artifact to the cache server");
+
+    assert_eq!(response.status(), 201);
 }
 
 #[tokio::test]
@@ -387,7 +425,7 @@ async fn download_artifact_returns_artifact_duration_from_s3_metadata_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -432,7 +470,7 @@ async fn download_artifact_omits_malformed_artifact_duration_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -440,6 +478,59 @@ async fn download_artifact_omits_malformed_artifact_duration_test() {
 
     assert_eq!(response.status(), 200);
     assert!(response.headers().get("x-artifact-duration").is_none());
+}
+
+/// Counterpart to `upload_artifact_forwards_both_artifact_headers_as_s3_metadata_test`.
+/// Both headers must come back on the same download.
+/// See: https://turborepo.dev/api/remote-cache-spec (GET /artifacts/{hash})
+#[tokio::test]
+async fn download_artifact_returns_both_artifact_headers_from_s3_metadata_test() {
+    let app = spawn_app(None).await;
+
+    let client = reqwest::Client::new();
+    let file_mock = TurboArtifactFileMock::new();
+    let artifact_tag = "v=1:sha256:abc123";
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("GET"))
+    .respond_with(ResponseTemplate::new(200).set_body_bytes(file_mock.file_bytes.clone()))
+    .mount(&app.storage_server)
+    .await;
+
+    Mock::given(path(format!(
+        "/{}/{}/{}",
+        app.bucket_name, file_mock.team, file_mock.file_hash
+    )))
+    .and(method("HEAD"))
+    .respond_with(
+        ResponseTemplate::new(200)
+            .insert_header("x-amz-meta-x-artifact-tag", artifact_tag)
+            .insert_header("x-amz-meta-x-artifact-duration", "1234"),
+    )
+    .mount(&app.storage_server)
+    .await;
+
+    let response = client
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            app.address, file_mock.file_hash, file_mock.team
+        ))
+        .send()
+        .await
+        .expect("Failed to GET artifact from the cache server");
+
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.headers().get("x-artifact-tag").unwrap(),
+        artifact_tag
+    );
+    assert_eq!(
+        response.headers().get("x-artifact-duration").unwrap(),
+        "1234"
+    );
 }
 
 #[tokio::test]
@@ -505,7 +596,7 @@ async fn artifact_exists_returns_artifact_metadata_test() {
     let response = client
         .head(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
