@@ -1,104 +1,99 @@
 use std::collections::HashMap;
+use std::fmt;
+use std::future::{Ready, ready};
 
 use actix_web::{
-    HttpRequest, HttpResponse, HttpResponseBuilder, Responder,
-    web::{Bytes, Data, Payload, Query},
+    FromRequest, HttpRequest, HttpResponse, HttpResponseBuilder, Responder, ResponseError, dev,
+    http::{Method, StatusCode},
+    web::{Data, Payload, Query},
 };
 use futures::StreamExt;
 use serde::Serialize;
 use tokio_util::io::StreamReader;
 
-use crate::storage::{Storage, StorageError};
+use crate::domain::{
+    ARTIFACT_DURATION_HEADER, ARTIFACT_TAG_HEADER, ArtifactId, ArtifactMetadata, CacheError,
+    artifact::parse_duration,
+};
+use crate::storage::Storage;
+use crate::usecases::ArtifactCache;
 
-/// When Turborepo is configured with `"signature": true` (turbo.json), the CLI
-/// computes an HMAC-SHA256 of each artifact and sends it as the `x-artifact-tag`
-/// header on PUT. The server persists this value as S3 object metadata and returns
-/// it on GET so the client can verify artifact integrity. Without it, every
-/// download fails signature verification and is treated as a cache miss.
-/// See: https://turborepo.dev/api/remote-cache-spec
-const ARTIFACT_TAG_HEADER: &str = "x-artifact-tag";
+/// The concrete cache the server wires up in `startup::run`.
+pub type Cache = ArtifactCache<Storage>;
 
-/// Turborepo sends the task run time on PUT and reads it back on GET and HEAD to
-/// report how much time the cache saved. Without it, every remote cache hit
-/// reports zero time saved.
-/// See: https://turborepo.dev/api/remote-cache-spec
-const ARTIFACT_DURATION_HEADER: &str = "x-artifact-duration";
+/// Reads the artifact headers from an upload request.
+fn metadata_from_headers(req: &HttpRequest) -> ArtifactMetadata {
+    let header = |name: &str| {
+        req.headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+    };
 
-/// The artifact headers Turborepo sends on upload and expects back on download.
-/// They travel as S3 user metadata.
-#[derive(Debug, Default, PartialEq, Eq)]
-struct ArtifactMetadata {
-    tag: Option<String>,
-    duration: Option<u64>,
-}
-
-impl ArtifactMetadata {
-    /// Reads the artifact headers from an upload request.
-    fn from_request(req: &HttpRequest) -> Self {
-        let header = |name: &str| {
-            req.headers()
-                .get(name)
-                .and_then(|value| value.to_str().ok())
-        };
-
-        Self {
-            tag: header(ARTIFACT_TAG_HEADER).map(str::to_owned),
-            duration: header(ARTIFACT_DURATION_HEADER).and_then(parse_duration),
-        }
-    }
-
-    /// Reads the artifact headers from the metadata stored on the S3 object.
-    fn from_storage(mut metadata: HashMap<String, String>) -> Self {
-        Self {
-            tag: metadata.remove(ARTIFACT_TAG_HEADER),
-            duration: metadata
-                .remove(ARTIFACT_DURATION_HEADER)
-                .as_deref()
-                .and_then(parse_duration),
-        }
-    }
-
-    /// The key-value pairs to persist as S3 user metadata.
-    fn into_storage(self) -> HashMap<String, String> {
-        let mut metadata = HashMap::new();
-
-        if let Some(tag) = self.tag {
-            metadata.insert(ARTIFACT_TAG_HEADER.to_owned(), tag);
-        }
-
-        if let Some(duration) = self.duration {
-            metadata.insert(ARTIFACT_DURATION_HEADER.to_owned(), duration.to_string());
-        }
-
-        metadata
-    }
-
-    /// Copies the artifact headers onto a download response.
-    fn apply(&self, builder: &mut HttpResponseBuilder) {
-        if let Some(tag) = &self.tag {
-            builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
-        }
-
-        if let Some(duration) = self.duration {
-            builder.insert_header((ARTIFACT_DURATION_HEADER, duration.to_string()));
-        }
+    ArtifactMetadata {
+        tag: header(ARTIFACT_TAG_HEADER).map(str::to_owned),
+        duration: header(ARTIFACT_DURATION_HEADER).and_then(parse_duration),
     }
 }
 
-/// How much of a rejected duration reaches the log.
-const MAX_LOGGED_DURATION_CHARS: usize = 32;
+/// Copies the artifact headers onto a download response.
+fn apply_metadata_headers(metadata: &ArtifactMetadata, builder: &mut HttpResponseBuilder) {
+    if let Some(tag) = &metadata.tag {
+        builder.insert_header((ARTIFACT_TAG_HEADER, tag.as_str()));
+    }
 
-/// Turborepo fails the whole cache read on a duration it cannot parse, so a
-/// value the server cannot vouch for is dropped instead of passed on.
-fn parse_duration(raw: &str) -> Option<u64> {
-    match raw.parse::<u64>() {
-        Ok(duration) => Some(duration),
-        Err(_) => {
-            // A client picks this value and can repeat it on every request, so
-            // it stays off the warning path and never reaches the log in full.
-            let value: String = raw.chars().take(MAX_LOGGED_DURATION_CHARS).collect();
-            tracing::debug!(value = %value, "Ignoring malformed x-artifact-duration");
-            None
+    if let Some(duration) = metadata.duration {
+        builder.insert_header((ARTIFACT_DURATION_HEADER, duration.to_string()));
+    }
+}
+
+/// Rejection for a request whose path holds no artifact hash.
+#[derive(Debug)]
+pub struct InvalidArtifactPath {
+    status: StatusCode,
+}
+
+impl fmt::Display for InvalidArtifactPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "request path holds no artifact hash")
+    }
+}
+
+impl ResponseError for InvalidArtifactPath {
+    fn status_code(&self) -> StatusCode {
+        self.status
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        HttpResponse::new(self.status)
+    }
+}
+
+impl FromRequest for ArtifactId {
+    type Error = InvalidArtifactPath;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut dev::Payload) -> Self::Future {
+        let id = req
+            .match_info()
+            .get("hash")
+            .filter(|hash| !hash.is_empty())
+            .map(|hash| ArtifactId {
+                team: extract_team_from_req(req),
+                hash: hash.to_owned(),
+            });
+
+        match id {
+            Some(id) => ready(Ok(id)),
+            // Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+            None => {
+                let status = if req.method() == Method::PUT {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::NOT_FOUND
+                };
+
+                ready(Err(InvalidArtifactPath { status }))
+            }
         }
     }
 }
@@ -132,95 +127,55 @@ pub async fn post_list_team_artifacts(req: HttpRequest) -> impl Responder {
     HttpResponse::Ok().json(&EMPTY_HASHES)
 }
 
-#[tracing::instrument(name = "Check artifact", skip(req, storage))]
-pub async fn head_check_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
-    let artifact_info = match ArtifactRequest::from(&req) {
-        Some(info) => info,
-        None => return HttpResponse::NotFound().finish(),
-    };
+#[tracing::instrument(name = "Check artifact", skip(cache))]
+pub async fn head_check_file(
+    id: ArtifactId,
+    cache: Data<Cache>,
+) -> Result<HttpResponse, CacheError> {
+    let metadata = cache.check(&id).await?;
 
-    match storage.head_file(&artifact_info.file_path()).await {
-        Ok(metadata) => {
-            let mut builder = HttpResponse::Ok();
-            ArtifactMetadata::from_storage(metadata).apply(&mut builder);
-            builder.finish()
-        }
-        Err(StorageError::NotFound) => HttpResponse::NotFound().finish(),
-        Err(error) => {
-            tracing::error!(error = %error, "Could not check artifact on the bucket");
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    let mut builder = HttpResponse::Ok();
+    apply_metadata_headers(&metadata, &mut builder);
+
+    Ok(builder.finish())
 }
 
-#[tracing::instrument(name = "Store artifact", skip(storage, body))]
-pub async fn put_file(req: HttpRequest, storage: Data<Storage>, body: Payload) -> impl Responder {
-    let artifact_info = match ArtifactRequest::from(&req) {
-        Some(info) => info,
-        None => return HttpResponse::BadRequest().finish(),
-    };
-
-    let metadata = ArtifactMetadata::from_request(&req).into_storage();
+#[tracing::instrument(name = "Store artifact", skip(req, cache, body))]
+pub async fn put_file(
+    req: HttpRequest,
+    id: ArtifactId,
+    cache: Data<Cache>,
+    body: Payload,
+) -> Result<HttpResponse, CacheError> {
+    let metadata = metadata_from_headers(&req);
 
     let io_stream = body.map(|chunk| chunk.map_err(std::io::Error::other));
     let mut reader = StreamReader::new(io_stream);
 
-    match storage
-        .put_file_stream(&artifact_info.file_path(), &mut reader, &metadata)
-        .await
-    {
-        Ok(_) => {
-            let artifact = Artifact {
-                filename: artifact_info.hash.clone(),
-            };
+    cache.store(&id, metadata, &mut reader).await?;
 
-            HttpResponse::Created().json(artifact)
-        }
-        Err(error) => {
-            tracing::error!(error = %error, "Could not store artifact on the bucket");
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    let artifact = Artifact {
+        filename: id.hash.clone(),
+    };
+
+    Ok(HttpResponse::Created().json(artifact))
 }
 
-#[tracing::instrument(name = "Read artifact", skip(storage))]
-pub async fn get_file(req: HttpRequest, storage: Data<Storage>) -> impl Responder {
-    let artifact_info = match ArtifactRequest::from(&req) {
-        Some(info) => info,
-        None => return HttpResponse::NotFound().finish(),
-    };
+#[tracing::instrument(name = "Read artifact", skip(cache))]
+pub async fn get_file(id: ArtifactId, cache: Data<Cache>) -> Result<HttpResponse, CacheError> {
+    let (body, metadata) = cache.fetch(&id).await?;
 
-    let file_path = artifact_info.file_path();
-
-    let (maybe_response, metadata) = tokio::join!(
-        storage.get_file(&file_path),
-        storage.get_metadata(&file_path),
-    );
-
-    let response = match maybe_response {
-        Ok(response) => response,
-        Err(StorageError::NotFound) => return HttpResponse::NotFound().finish(),
-        Err(error) => {
-            tracing::error!(error = %error, "Could not read artifact from the bucket");
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-
-    let stream = response.bytes.map(|maybe_chunk| match maybe_chunk {
-        Ok(bytes) => Result::<Bytes, actix_web::error::Error>::Ok(bytes),
-        Err(error) => {
-            tracing::error!(error = error.to_string(), "Chunk stream error");
-            Result::<Bytes, actix_web::error::Error>::Err(
-                actix_web::error::ErrorInternalServerError("Error while streaming artifact"),
-            )
-        }
+    let stream = body.map(|maybe_chunk| {
+        maybe_chunk.map_err(|error| {
+            tracing::error!(error = %error, "Chunk stream error");
+            actix_web::error::ErrorInternalServerError("Error while streaming artifact")
+        })
     });
 
     let mut builder = HttpResponse::Ok();
+    apply_metadata_headers(&metadata, &mut builder);
 
-    ArtifactMetadata::from_storage(metadata).apply(&mut builder);
-
-    builder.streaming(stream)
+    Ok(builder.streaming(stream))
 }
 
 fn extract_team_from_req(req: &HttpRequest) -> String {
@@ -231,29 +186,6 @@ fn extract_team_from_req(req: &HttpRequest) -> String {
         .or_else(|| query_string.get("teamId"))
         .unwrap_or(&default_team_name)
         .to_string()
-}
-
-struct ArtifactRequest {
-    hash: String,
-    team: String,
-}
-
-impl ArtifactRequest {
-    /// File path as represented in the S3 storage
-    fn file_path(&self) -> String {
-        format!("/{}/{}", self.team, self.hash)
-    }
-
-    fn from(req: &HttpRequest) -> Option<Self> {
-        let hash = {
-            let h = req.match_info().get("hash")?;
-            h.to_owned()
-        };
-
-        let team = extract_team_from_req(req);
-
-        Some(ArtifactRequest { hash, team })
-    }
 }
 
 const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
@@ -278,7 +210,7 @@ mod tests {
             .to_http_request();
 
         assert_eq!(
-            ArtifactMetadata::from_request(&req),
+            metadata_from_headers(&req),
             ArtifactMetadata {
                 tag: Some(TAG.to_owned()),
                 duration: Some(1234),
@@ -290,10 +222,7 @@ mod tests {
     fn reads_no_artifact_headers_from_a_bare_request() {
         let req = TestRequest::default().to_http_request();
 
-        assert_eq!(
-            ArtifactMetadata::from_request(&req),
-            ArtifactMetadata::default()
-        );
+        assert_eq!(metadata_from_headers(&req), ArtifactMetadata::default());
     }
 
     /// Turborepo fails the whole cache read on a duration it cannot parse, so a
@@ -304,7 +233,7 @@ mod tests {
             .insert_header((ARTIFACT_DURATION_HEADER, "not-a-number"))
             .to_http_request();
 
-        assert_eq!(ArtifactMetadata::from_request(&req).duration, None);
+        assert_eq!(metadata_from_headers(&req).duration, None);
     }
 
     /// The bucket holds the parsed number, not the bytes the client sent.
@@ -314,7 +243,7 @@ mod tests {
             .insert_header((ARTIFACT_DURATION_HEADER, "007"))
             .to_http_request();
 
-        let metadata = ArtifactMetadata::from_request(&req).into_storage();
+        let metadata = metadata_from_headers(&req).into_key_values();
 
         assert_eq!(
             metadata.get(ARTIFACT_DURATION_HEADER).map(String::as_str),
@@ -322,31 +251,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reads_both_artifact_headers_from_storage() {
-        let stored = HashMap::from([
-            (ARTIFACT_TAG_HEADER.to_owned(), TAG.to_owned()),
-            (ARTIFACT_DURATION_HEADER.to_owned(), "1234".to_owned()),
-        ]);
+    #[tokio::test]
+    async fn extracts_the_artifact_id_from_path_and_query() {
+        let req = TestRequest::with_uri("/v8/artifacts/abc123?slug=my-team")
+            .param("hash", "abc123")
+            .to_http_request();
 
-        assert_eq!(
-            ArtifactMetadata::from_storage(stored),
-            ArtifactMetadata {
-                tag: Some(TAG.to_owned()),
-                duration: Some(1234),
-            }
-        );
+        let id = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap();
+
+        assert_eq!(id.team, "my-team");
+        assert_eq!(id.hash, "abc123");
     }
 
-    /// Another writer may share the bucket, so the read path does not trust the
-    /// stored value either.
-    #[test]
-    fn drops_a_malformed_duration_from_storage() {
-        let stored = HashMap::from([(
-            ARTIFACT_DURATION_HEADER.to_owned(),
-            "not-a-number".to_owned(),
-        )]);
+    #[tokio::test]
+    async fn falls_back_to_no_team_without_a_team_query() {
+        let req = TestRequest::with_uri("/v8/artifacts/abc123")
+            .param("hash", "abc123")
+            .to_http_request();
 
-        assert_eq!(ArtifactMetadata::from_storage(stored).duration, None);
+        let id = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap();
+
+        assert_eq!(id.team, "no_team");
+    }
+
+    /// Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+    #[tokio::test]
+    async fn rejects_a_missing_hash_with_the_method_status() {
+        let req = TestRequest::default().method(Method::PUT).to_http_request();
+        let error = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status_code(), StatusCode::BAD_REQUEST);
+
+        let req = TestRequest::default().to_http_request();
+        let error = ArtifactId::from_request(&req, &mut dev::Payload::None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
     }
 }
