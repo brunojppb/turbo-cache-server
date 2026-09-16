@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::pin::Pin;
 
 use bytes::Bytes;
 use futures::Stream;
 use tokio::io::AsyncRead;
 
 use crate::app_settings::AppSettings;
+use crate::domain::CacheError;
 use crate::storage::upload::{UploadError, Uploader};
+use crate::usecases::ArtifactStore;
 
 mod client;
 mod upload;
-
-use crate::domain::CacheError;
-use crate::usecases::ArtifactStore;
-use std::pin::Pin;
 
 impl From<UploadError> for CacheError {
     fn from(error: UploadError) -> Self {
@@ -38,7 +37,7 @@ impl fmt::Debug for Storage {
 impl Storage {
     pub fn new(settings: &AppSettings) -> Self {
         let config = client::build_config(settings);
-        let s3 = aws_sdk_s3::Client::from_conf(config.clone().build());
+        let s3 = aws_sdk_s3::Client::from_conf(config.build());
         let uploader = Uploader::new(
             s3.clone(),
             settings.s3_bucket_name.clone(),
@@ -54,7 +53,7 @@ impl Storage {
 
     /// Preserve the object keys used by the previous S3 client.
     fn key(path: &str) -> &str {
-        path.trim_start_matches('/')
+        path.strip_prefix('/').unwrap_or(path)
     }
 }
 
@@ -97,22 +96,42 @@ impl ArtifactStore for Storage {
 
     #[tracing::instrument(name = "head S3 file")]
     async fn head(&self, path: &str) -> Result<HashMap<String, String>, CacheError> {
-        match self.s3.head_object().bucket(&self.bucket).key(Self::key(path)).send().await {
+        match self
+            .s3
+            .head_object()
+            .bucket(&self.bucket)
+            .key(Self::key(path))
+            .send()
+            .await
+        {
             Ok(head) => Ok(head.metadata.unwrap_or_default()),
             Err(error) => {
                 let not_found = error.as_service_error().is_some_and(|e| e.is_not_found())
-                    || error.raw_response().is_some_and(|response| response.status().as_u16() == 404);
-                if not_found { Err(CacheError::NotFound) }
-                else { Err(CacheError::StoreUnavailable(Box::new(error))) }
+                    || error
+                        .raw_response()
+                        .is_some_and(|response| response.status().as_u16() == 404);
+                if not_found {
+                    Err(CacheError::NotFound)
+                } else {
+                    Err(CacheError::StoreUnavailable(Box::new(error)))
+                }
             }
         }
     }
 
     #[tracing::instrument(name = "put S3 file stream", skip(reader, metadata))]
-    async fn put<R>(&self, path: &str, reader: &mut R, metadata: HashMap<String, String>) -> Result<(), CacheError>
-    where R: AsyncRead + Unpin,
+    async fn put<R>(
+        &self,
+        path: &str,
+        reader: &mut R,
+        metadata: HashMap<String, String>,
+    ) -> Result<(), CacheError>
+    where
+        R: AsyncRead + Unpin,
     {
-        self.uploader.put(Self::key(path), reader, Some(&metadata)).await?;
+        self.uploader
+            .put(Self::key(path), reader, Some(&metadata))
+            .await?;
         Ok(())
     }
 }
@@ -120,6 +139,13 @@ impl ArtifactStore for Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_preserve_the_previous_clients_single_leading_slash_removal() {
+        assert_eq!(Storage::key("/team/hash"), "team/hash");
+        assert_eq!(Storage::key("//team/hash"), "/team/hash");
+        assert_eq!(Storage::key("team/hash"), "team/hash");
+    }
 
     fn settings_with_credentials() -> AppSettings {
         AppSettings {

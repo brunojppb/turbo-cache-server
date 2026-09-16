@@ -36,8 +36,7 @@ impl ProvideCredentials for LazyDefaultCredentials {
     }
 }
 
-/// Builds the S3 configuration shared by the plain client and the transfer
-/// manager.
+/// Builds the shared S3 configuration.
 pub(crate) fn build_config(settings: &AppSettings) -> aws_sdk_s3::config::Builder {
     let region = Region::new(settings.s3_region.clone());
 
@@ -54,6 +53,13 @@ pub(crate) fn build_config(settings: &AppSettings) -> aws_sdk_s3::config::Builde
 
     let mut config = aws_sdk_s3::Config::builder()
         .behavior_version(BehaviorVersion::latest())
+        .retry_config(aws_sdk_s3::config::retry::RetryConfig::standard().with_max_attempts(3))
+        .timeout_config(
+            aws_sdk_s3::config::timeout::TimeoutConfig::builder()
+                .operation_timeout(std::time::Duration::from_secs(120))
+                .operation_attempt_timeout(std::time::Duration::from_secs(30))
+                .build(),
+        )
         .region(region.clone())
         .force_path_style(settings.s3_use_path_style)
         .request_checksum_calculation(request_checksums)

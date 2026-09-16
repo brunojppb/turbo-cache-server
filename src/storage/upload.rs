@@ -1,45 +1,31 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::io::Cursor;
+use std::io;
+use std::time::Duration;
 
+use aws_sdk_s3::config::RequestChecksumCalculation;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::ServerSideEncryption;
-use aws_sdk_s3_transfer_manager as transfer_manager;
+use aws_sdk_s3::types::{
+    ChecksumAlgorithm, CompletedMultipartUpload, CompletedPart, ServerSideEncryption,
+};
 use tokio::io::{AsyncRead, AsyncReadExt};
-use transfer_manager::io::adapters::TokioIo;
-use transfer_manager::io::{InputStream, SizeHint};
-use transfer_manager::types::{ConcurrencyMode, MemoryBudgetConfig, PartSize};
 
 use crate::app_settings::S3ServerSideEncryption;
 
-/// Bodies below this size go out as a single PutObject. At or above it, the
-/// transfer manager runs a multipart upload.
+/// Bodies below this size use PutObject; larger bodies use sequential parts.
+/// Only one replayable part is buffered per upload, including SDK retries.
 pub(crate) const PART_SIZE: u64 = 8 * 1024 * 1024;
-
-/// Parts held in memory per upload. With PART_SIZE that caps one upload at
-/// 32 MiB.
-const PARTS_IN_FLIGHT: usize = 4;
-
-/// Ceiling on part data the transfer manager buffers for multipart uploads.
-/// The transfer manager otherwise reserves a share of detected RAM, which is
-/// wrong for a CI container. The per-request head buffer (up to PART_SIZE) is
-/// separate and additional, since it fills before the size decision runs.
-const MEMORY_BUDGET: usize = 128 * 1024 * 1024;
+const MAX_PARTS: i32 = 10_000;
+const ABORT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub(crate) enum UploadError {
-    /// A body at or above PART_SIZE arrived without a Content-Length, so the
-    /// transfer manager cannot be told the size it needs up front.
-    LengthRequired,
     Failed(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl fmt::Display for UploadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::LengthRequired => {
-                write!(f, "uploads at or above the part size need a Content-Length")
-            }
             Self::Failed(error) => write!(f, "S3 upload failed: {error}"),
         }
     }
@@ -48,15 +34,62 @@ impl fmt::Display for UploadError {
 impl std::error::Error for UploadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::LengthRequired => None,
             Self::Failed(error) => Some(error.as_ref()),
         }
     }
 }
 
+fn failed(error: impl std::error::Error + Send + Sync + 'static) -> UploadError {
+    UploadError::Failed(Box::new(error))
+}
+
+/// Owns the server-side upload until completion. Cancellation drops this guard
+/// and schedules bounded cleanup, without keeping the request body alive.
+struct MultipartUpload {
+    s3: aws_sdk_s3::Client,
+    bucket: String,
+    key: String,
+    id: Option<String>,
+}
+
+impl MultipartUpload {
+    async fn abort(&mut self) {
+        if let Some(id) = &self.id {
+            abort(&self.s3, &self.bucket, &self.key, id).await;
+            self.id = None;
+        }
+    }
+}
+
+impl Drop for MultipartUpload {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            let s3 = self.s3.clone();
+            let bucket = self.bucket.clone();
+            let key = self.key.clone();
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn(async move { abort(&s3, &bucket, &key, &id).await });
+            }
+        }
+    }
+}
+
+async fn abort(s3: &aws_sdk_s3::Client, bucket: &str, key: &str, id: &str) {
+    let request = s3
+        .abort_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .upload_id(id)
+        .send();
+    match tokio::time::timeout(ABORT_TIMEOUT, request).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => tracing::warn!(%error, "Could not abort multipart upload"),
+        Err(_) => tracing::warn!("Timed out aborting multipart upload"),
+    }
+}
+
 pub(crate) struct Uploader {
     s3: aws_sdk_s3::Client,
-    transfer: transfer_manager::Client,
     bucket: String,
     server_side_encryption: Option<S3ServerSideEncryption>,
 }
@@ -64,22 +97,11 @@ pub(crate) struct Uploader {
 impl Uploader {
     pub(crate) fn new(
         s3: aws_sdk_s3::Client,
-        config: aws_sdk_s3::config::Builder,
         bucket: String,
         server_side_encryption: Option<S3ServerSideEncryption>,
     ) -> Self {
-        let transfer = transfer_manager::Client::new(
-            transfer_manager::Config::builder()
-                .s3_config(transfer_manager::config::S3ClientConfig::new(config))
-                .part_size(PartSize::Target(PART_SIZE))
-                .concurrency(ConcurrencyMode::Explicit(PARTS_IN_FLIGHT))
-                .memory_budget(MemoryBudgetConfig::Limit(MEMORY_BUDGET))
-                .build(),
-        );
-
         Self {
             s3,
-            transfer,
             bucket,
             server_side_encryption,
         }
@@ -90,25 +112,18 @@ impl Uploader {
             .map(|encryption| ServerSideEncryption::from(encryption.as_str()))
     }
 
-    /// Streams the body to the bucket, keeping `metadata` as S3 user metadata.
+    /// Reads one part at a time, so unknown-length bodies need no producer task
+    /// or whole-object buffer. Metadata belongs on multipart initiation.
     pub(crate) async fn put<R>(
         &self,
         path: &str,
-        reader: R,
-        content_length: Option<u64>,
+        reader: &mut R,
         metadata: Option<&HashMap<String, String>>,
     ) -> Result<(), UploadError>
     where
-        R: AsyncRead + Send + Sync + Unpin + 'static,
+        R: AsyncRead + Unpin,
     {
-        let mut reader = reader;
-        let mut head = Vec::new();
-        (&mut reader)
-            .take(PART_SIZE)
-            .read_to_end(&mut head)
-            .await
-            .map_err(|error| UploadError::Failed(Box::new(error)))?;
-
+        let head = read_part(reader).await?;
         if (head.len() as u64) < PART_SIZE {
             self.s3
                 .put_object()
@@ -119,33 +134,127 @@ impl Uploader {
                 .body(ByteStream::from(head))
                 .send()
                 .await
-                .map_err(|error| UploadError::Failed(Box::new(error)))?;
-
+                .map_err(failed)?;
             return Ok(());
         }
 
-        let length = content_length.ok_or(UploadError::LengthRequired)?;
-        // Replays the bytes already read, then continues with the rest.
-        let body = Cursor::new(head).chain(reader);
-        let stream = InputStream::from_part_stream(TokioIo::new(body, SizeHint::exact(length)));
+        let s3 = self.s3.clone();
+        let bucket = self.bucket.clone();
+        let key = path.to_owned();
+        let metadata = metadata.cloned();
+        let encryption = self.encryption();
+        // Match the SDK's automatic UploadPart checksum when opted in. S3's
+        // default initiation algorithm can differ from the SDK's CRC32.
+        let checksum_algorithm = (self.s3.config().request_checksum_calculation()
+            == Some(&RequestChecksumCalculation::WhenSupported))
+        .then_some(ChecksumAlgorithm::Crc32);
+        // Let initiation finish even if the request disappears. The returned
+        // guard then drops and aborts the upload when its join handle is gone.
+        // SDK operation timeouts bound this task; it never owns the body.
+        let mut upload = tokio::spawn(async move {
+            let response = s3
+                .create_multipart_upload()
+                .bucket(&bucket)
+                .key(&key)
+                .set_metadata(metadata)
+                .set_server_side_encryption(encryption)
+                .set_checksum_algorithm(checksum_algorithm)
+                .send()
+                .await
+                .map_err(failed)?;
+            let id = response
+                .upload_id()
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| failed(io::Error::other("S3 omitted the multipart upload ID")))?
+                .to_owned();
+            Ok::<_, UploadError>(MultipartUpload {
+                s3,
+                bucket,
+                key,
+                id: Some(id),
+            })
+        })
+        .await
+        .map_err(failed)??;
 
-        self.transfer
-            .upload()
-            .bucket(&self.bucket)
-            .key(path)
-            .set_metadata(metadata.cloned())
-            .set_server_side_encryption(self.encryption())
-            .body(stream)
-            .initiate()
-            .map_err(|error| UploadError::Failed(Box::new(error)))?
-            .join()
+        let result = self.put_parts(&upload, reader, head).await;
+        if result.is_ok() {
+            upload.id = None;
+        } else {
+            upload.abort().await;
+        }
+        result
+    }
+
+    async fn put_parts<R: AsyncRead + Unpin>(
+        &self,
+        upload: &MultipartUpload,
+        reader: &mut R,
+        mut part: Vec<u8>,
+    ) -> Result<(), UploadError> {
+        let mut completed = Vec::new();
+        let mut number = 1;
+        while !part.is_empty() {
+            if number > MAX_PARTS {
+                return Err(failed(io::Error::other(
+                    "S3 multipart upload exceeds 10000 parts",
+                )));
+            }
+            let response = self
+                .s3
+                .upload_part()
+                .bucket(&upload.bucket)
+                .key(&upload.key)
+                .set_upload_id(upload.id.clone())
+                .part_number(number)
+                .body(ByteStream::from(part))
+                .send()
+                .await
+                .map_err(failed)?;
+            let etag = response
+                .e_tag()
+                .filter(|etag| !etag.is_empty())
+                .ok_or_else(|| failed(io::Error::other("S3 omitted the part ETag")))?;
+            completed.push(
+                CompletedPart::builder()
+                    .part_number(number)
+                    .e_tag(etag)
+                    .set_checksum_crc32(response.checksum_crc32().map(str::to_owned))
+                    .set_checksum_crc32_c(response.checksum_crc32_c().map(str::to_owned))
+                    .set_checksum_crc64_nvme(response.checksum_crc64_nvme().map(str::to_owned))
+                    .set_checksum_sha1(response.checksum_sha1().map(str::to_owned))
+                    .set_checksum_sha256(response.checksum_sha256().map(str::to_owned))
+                    .build(),
+            );
+            number += 1;
+            part = read_part(reader).await?;
+        }
+        self.s3
+            .complete_multipart_upload()
+            .bucket(&upload.bucket)
+            .key(&upload.key)
+            .set_upload_id(upload.id.clone())
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .set_parts(Some(completed))
+                    .build(),
+            )
+            .send()
             .await
-            .map_err(|error| UploadError::Failed(Box::new(error)))?;
-
+            .map_err(failed)?;
         Ok(())
     }
 }
 
+async fn read_part<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, UploadError> {
+    let mut part = Vec::with_capacity(PART_SIZE as usize);
+    reader
+        .take(PART_SIZE)
+        .read_to_end(&mut part)
+        .await
+        .map_err(failed)?;
+    Ok(part)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +265,10 @@ mod tests {
     const TAG: &str = "v=1:sha256:abc123";
 
     fn uploader(endpoint: &str) -> Uploader {
+        uploader_with_checksums(endpoint, S3ChecksumMode::WhenRequired)
+    }
+
+    fn uploader_with_checksums(endpoint: &str, checksum_mode: S3ChecksumMode) -> Uploader {
         let settings = AppSettings {
             host: "127.0.0.1".to_owned(),
             port: 8000,
@@ -166,30 +279,25 @@ mod tests {
             s3_region: "eu-central-1".to_owned(),
             s3_bucket_name: "turbo".to_owned(),
             s3_server_side_encryption: None,
-            s3_checksum_mode: S3ChecksumMode::WhenRequired,
+            s3_checksum_mode: checksum_mode,
             turbo_token: None,
         };
 
         let config = super::super::client::build_config(&settings);
         let s3 = aws_sdk_s3::Client::from_conf(config.clone().build());
 
-        Uploader::new(s3, config, "turbo".to_owned(), None)
+        Uploader::new(s3, "turbo".to_owned(), None)
     }
 
     fn tag_metadata() -> HashMap<String, String> {
         HashMap::from([("x-artifact-tag".to_owned(), TAG.to_owned())])
     }
 
-    async fn upload(
-        server: &MockServer,
-        size: usize,
-        send_length: bool,
-    ) -> Result<(), UploadError> {
-        let reader = std::io::Cursor::new(vec![7u8; size]);
-        let length = if send_length { Some(size as u64) } else { None };
+    async fn upload(server: &MockServer, size: usize) -> Result<(), UploadError> {
+        let mut reader = std::io::Cursor::new(vec![7u8; size]);
 
         uploader(&server.uri())
-            .put("team/hash", reader, length, Some(&tag_metadata()))
+            .put("team/hash", &mut reader, Some(&tag_metadata()))
             .await
     }
 
@@ -242,6 +350,12 @@ mod tests {
             .mount(server)
             .await;
 
+        Mock::given(method("DELETE"))
+            .and(query_param("uploadId", "upload-1"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(server)
+            .await;
+
         Mock::given(any())
             .respond_with(ResponseTemplate::new(500))
             .mount(server)
@@ -254,7 +368,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_single_part(&server).await;
 
-        upload(&server, 12, true).await.expect("upload failed");
+        upload(&server, 12).await.expect("upload failed");
 
         let requests = server.received_requests().await.unwrap();
         assert_eq!(requests.len(), 1);
@@ -272,7 +386,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_single_part(&server).await;
 
-        upload(&server, (PART_SIZE - 1) as usize, true)
+        upload(&server, (PART_SIZE - 1) as usize)
             .await
             .expect("upload failed");
 
@@ -287,7 +401,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_multipart(&server).await;
 
-        upload(&server, PART_SIZE as usize, true)
+        upload(&server, PART_SIZE as usize)
             .await
             .expect("upload failed");
 
@@ -317,9 +431,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_multipart(&server).await;
 
-        upload(&server, 8_715_039, true)
-            .await
-            .expect("upload failed");
+        upload(&server, 8_715_039).await.expect("upload failed");
 
         let requests = server.received_requests().await.unwrap();
         let initiate = requests
@@ -352,22 +464,340 @@ mod tests {
         let server = MockServer::start().await;
         mount_single_part(&server).await;
 
-        upload(&server, 12, false).await.expect("upload failed");
+        upload(&server, 12).await.expect("upload failed");
 
         assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
-    async fn large_upload_without_content_length_is_length_required() {
+    async fn large_upload_without_content_length_succeeds() {
         let server = MockServer::start().await;
         mount_multipart(&server).await;
 
-        let result = upload(&server, PART_SIZE as usize, false).await;
+        let result = upload(&server, PART_SIZE as usize).await;
 
-        assert!(matches!(result, Err(UploadError::LengthRequired)));
-        assert!(
-            server.received_requests().await.unwrap().is_empty(),
-            "must fail before touching S3"
+        assert!(result.is_ok());
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn empty_upload_is_a_single_put() {
+        let server = MockServer::start().await;
+        mount_single_part(&server).await;
+        upload(&server, 0).await.unwrap();
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn parts_preserve_bytes_order_metadata_and_encryption() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("PUT"))
+            .respond_with(|request: &Request| {
+                let number = request
+                    .url
+                    .query_pairs()
+                    .find(|(key, _)| key == "partNumber")
+                    .unwrap()
+                    .1;
+                ResponseTemplate::new(200).insert_header("ETag", format!("\"part-{number}\""))
+            })
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let data: Vec<_> = (0..PART_SIZE as usize + 257)
+            .map(|n| (n % 251) as u8)
+            .collect();
+        let mut reader = io::Cursor::new(&data);
+        let mut uploader = uploader(&server.uri());
+        uploader.server_side_encryption = Some(S3ServerSideEncryption::Aes256);
+        let mut metadata = tag_metadata();
+        metadata.insert("x-artifact-duration".to_owned(), "321".to_owned());
+        uploader
+            .put("team/hash", &mut reader, Some(&metadata))
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            header(&requests[0], "x-amz-server-side-encryption").as_deref(),
+            Some("AES256")
         );
+        assert_eq!(
+            header(&requests[0], "x-amz-meta-x-artifact-duration").as_deref(),
+            Some("321")
+        );
+        let parts: Vec<_> = requests
+            .iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].body, data[..PART_SIZE as usize]);
+        assert_eq!(parts[1].body, data[PART_SIZE as usize..]);
+        let complete = String::from_utf8(requests.last().unwrap().body.clone()).unwrap();
+        assert!(complete.find("part-1").unwrap() < complete.find("part-2").unwrap());
+        assert!(complete.contains("<PartNumber>1</PartNumber>"));
+        assert!(complete.contains("<PartNumber>2</PartNumber>"));
+    }
+
+    #[tokio::test]
+    async fn single_put_preserves_encryption() {
+        let server = MockServer::start().await;
+        mount_single_part(&server).await;
+        let mut uploader = uploader(&server.uri());
+        uploader.server_side_encryption = Some(S3ServerSideEncryption::AwsKms);
+        uploader
+            .put("team/hash", &mut io::Cursor::new(b"small"), None)
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            header(&requests[0], "x-amz-server-side-encryption").as_deref(),
+            Some("aws:kms")
+        );
+    }
+
+    async fn assert_aborted(server: &MockServer) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if server
+                    .received_requests()
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|r| r.method.as_str() == "DELETE")
+                {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("multipart upload was not aborted");
+    }
+
+    #[tokio::test]
+    async fn failed_part_aborts_without_completing() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(403))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        assert!(upload(&server, PART_SIZE as usize).await.is_err());
+        assert_aborted(&server).await;
+        let requests = server.received_requests().await.unwrap();
+        assert!(
+            !requests
+                .iter()
+                .any(|r| r.method.as_str() == "POST" && r.url.query() == Some("uploadId=upload-1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_etag_aborts_without_completing() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(200))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        assert!(upload(&server, PART_SIZE as usize).await.is_err());
+        assert_aborted(&server).await;
+        let requests = server.received_requests().await.unwrap();
+        assert!(
+            !requests
+                .iter()
+                .any(|r| r.method.as_str() == "POST" && r.url.query() == Some("uploadId=upload-1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_completion_aborts() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("POST"))
+            .and(query_param("uploadId", "upload-1"))
+            .respond_with(ResponseTemplate::new(403))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        assert!(upload(&server, PART_SIZE as usize).await.is_err());
+        assert_aborted(&server).await;
+    }
+
+    struct ReadFailure;
+
+    impl AsyncRead for ReadFailure {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            _: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            std::task::Poll::Ready(Err(io::Error::other("request body failed")))
+        }
+    }
+
+    #[tokio::test]
+    async fn reader_failure_after_first_part_aborts() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        let mut reader = io::Cursor::new(vec![7; PART_SIZE as usize]).chain(ReadFailure);
+        assert!(
+            uploader(&server.uri())
+                .put("team/hash", &mut reader, None)
+                .await
+                .is_err()
+        );
+        assert_aborted(&server).await;
+    }
+
+    #[tokio::test]
+    async fn reader_failure_before_first_part_never_starts_upload() {
+        let server = MockServer::start().await;
+        assert!(
+            uploader(&server.uri())
+                .put("team/hash", &mut ReadFailure, None)
+                .await
+                .is_err()
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    struct PendingReader(std::sync::Arc<tokio::sync::Notify>);
+
+    impl AsyncRead for PendingReader {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            _: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            self.0.notify_one();
+            std::task::Poll::Pending
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_while_waiting_for_body_aborts() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        let pending = std::sync::Arc::new(tokio::sync::Notify::new());
+        let mut reader =
+            io::Cursor::new(vec![7; PART_SIZE as usize]).chain(PendingReader(pending.clone()));
+        let uploader = uploader(&server.uri());
+        let task = tokio::spawn(async move { uploader.put("team/hash", &mut reader, None).await });
+        tokio::time::timeout(Duration::from_secs(5), pending.notified())
+            .await
+            .unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_aborted(&server).await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_initiation_aborts_when_id_arrives() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        let started = std::sync::Arc::new(tokio::sync::Notify::new());
+        let notification = started.clone();
+        Mock::given(method("POST"))
+            .and(query_param("uploads", ""))
+            .respond_with(move |_: &Request| {
+                notification.notify_one();
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(100))
+                    .set_body_raw("<InitiateMultipartUploadResult><UploadId>upload-1</UploadId></InitiateMultipartUploadResult>", "application/xml")
+            })
+            .with_priority(1).mount(&server).await;
+        let uploader = uploader(&server.uri());
+        let task = tokio::spawn(async move {
+            uploader
+                .put(
+                    "team/hash",
+                    &mut io::Cursor::new(vec![7; PART_SIZE as usize]),
+                    None,
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(5), started.notified())
+            .await
+            .unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_aborted(&server).await;
+        assert!(
+            !server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .any(|r| r.method.as_str() == "PUT")
+        );
+    }
+
+    #[tokio::test]
+    async fn opted_in_checksums_match_initiation_and_completion() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("PUT"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("ETag", "\"part-1\"")
+                    .insert_header("x-amz-checksum-crc32", "example-crc32"),
+            )
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        let uploader = uploader_with_checksums(&server.uri(), S3ChecksumMode::WhenSupported);
+        uploader
+            .put(
+                "team/hash",
+                &mut io::Cursor::new(vec![7; PART_SIZE as usize]),
+                None,
+            )
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            header(&requests[0], "x-amz-checksum-algorithm").as_deref(),
+            Some("CRC32")
+        );
+        assert_eq!(
+            header(&requests[1], "x-amz-sdk-checksum-algorithm").as_deref(),
+            Some("CRC32")
+        );
+        let complete = String::from_utf8(requests[2].body.clone()).unwrap();
+        assert!(complete.contains("<ChecksumCRC32>example-crc32</ChecksumCRC32>"));
+    }
+
+    #[tokio::test]
+    async fn retried_part_replays_the_same_bytes() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = attempts.clone();
+        Mock::given(method("PUT"))
+            .respond_with(move |_: &Request| {
+                if count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0 {
+                    ResponseTemplate::new(503)
+                } else {
+                    ResponseTemplate::new(200).insert_header("ETag", "\"part-1\"")
+                }
+            })
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        upload(&server, PART_SIZE as usize).await.unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let parts: Vec<_> = requests
+            .iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].body, parts[1].body);
+        assert_eq!(parts[0].body, vec![7; PART_SIZE as usize]);
     }
 }

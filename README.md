@@ -67,9 +67,9 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             # Valid values: AES256, aws:kms, aws:kms:dsse, aws:fsx
             S3_SERVER_SIDE_ENCRYPTION: "AES256"
             # Optional: Whether the S3 client sends CRC checksums.
-            # "when_required" (the default) keeps requests plain, which every
-            # S3-compatible store accepts. "when_supported" turns on the AWS
-            # SDK checksums. Use it only on real AWS S3.
+            # "when_required" (the default) maximizes S3-compatible support.
+            # "when_supported" enables additional SDK checksums; confirm
+            # that your storage provider supports them.
             S3_CHECKSUM_MODE: "when_required"
 
         # Now you can run your turborepo tasks and rely on the cache server
@@ -96,7 +96,10 @@ for inspiration.
 ## Gitlab support
 
 For folks using Gitlab or any other CI environment that supports Docker,
-you can run the Turbo Cache Server as a docker container:
+you can run the Turbo Cache Server as a docker container.
+
+`S3_CHECKSUM_MODE=when_required` is the compatibility default; `when_supported`
+opts into additional checksums. `TURBO_TOKEN` optionally enables authentication.
 
 ```shell
 docker run \
@@ -106,9 +109,7 @@ docker run \
   -e S3_ENDPOINT=https://s3_endpoint_here \
   -e S3_REGION=eu \
   -e S3_SERVER_SIDE_ENCRYPTION=AES256 \
-  # Optional: "when_supported" turns on AWS SDK checksums. Real AWS only.
   -e S3_CHECKSUM_MODE=when_required \
-  # Optional: enables authentication. See "Authentication" below.
   -e TURBO_TOKEN=secret-turbo-token \
   -p "8000:8000" \
   ghcr.io/brunojppb/turbo-cache-server:latest
@@ -116,12 +117,20 @@ docker run \
 
 ## S3 Request Retries
 
-Turbo Cache Server uses the official AWS SDK for S3, which retries a
-transient 5xx error or a throttling response up to three times, with a
-backoff delay between each try. There is no environment variable for this;
-the SDK sets it. When the bucket fails or throttles requests, the error
-still reaches the caller, but only after these retries, so it arrives slower
-rather than sooner.
+Turbo Cache Server uses the official AWS SDK for S3 with at most three attempts
+per request (the initial attempt and up to two retries), using backoff for
+transient failures and throttling. Each attempt has a 30-second timeout and
+each operation has a 120-second timeout. Upload parts remain in memory until
+the request finishes, so retries replay the same bytes.
+
+Artifacts smaller than 8 MiB use one `PutObject`; artifacts of 8 MiB or more
+use direct multipart SDK calls. Both paths preserve artifact tags and duration
+metadata.
+Uploads work with or without `Content-Length`. Multipart parts are sent
+sequentially, with one 8 MiB payload buffer per upload, plus HTTP/SDK buffers
+and the list of completed part ETags. Memory scales with simultaneous uploads;
+there is no global upload memory limit. The fixed part size supports
+up to 10,000 parts (about 78 GiB); larger uploads fail and are aborted.
 
 ## Authentication
 
@@ -244,7 +253,6 @@ spec:
               value: "https://your-s3-endpoint.com"
             - name: S3_SERVER_SIDE_ENCRYPTION
               value: "AES256"
-            # Optional: "when_supported" turns on AWS SDK checksums. Real AWS only.
             - name: S3_CHECKSUM_MODE
               value: "when_required"
           resources:
@@ -426,9 +434,14 @@ You can also set a specific expiration date:
 
 ### Cleaning Up Incomplete Multipart Uploads
 
-Artifacts of 8 MiB or more go to S3 as a multipart upload. If a client
-disconnects partway through one of these uploads, the parts already sent
-stay on the bucket. They cost storage even though no complete object exists.
+Artifacts of 8 MiB or more go to S3 as a multipart upload. The server attempts
+to abort incomplete uploads when a body read or S3 request fails, or an upload
+is cancelled. Cleanup is limited to 10 seconds and failures are logged. Allow
+`s3:AbortMultipartUpload` along with the bucket's existing read/write permissions.
+
+Keep a lifecycle rule as a fallback: process termination, an unavailable bucket,
+or a lost initiation response can prevent cleanup. In-flight S3 requests may
+also finish after cancellation. Incomplete parts cost storage until removed.
 
 Add a lifecycle rule that removes incomplete multipart uploads after a number
 of days:
@@ -674,6 +687,20 @@ To execute the test suite, run:
 ```shell
 cargo test
 ```
+
+To check real S3 round trips with an isolated MinIO container, install Docker,
+Python 3, and the AWS CLI, then run:
+
+```shell
+cargo build --release --locked
+python3 tests/real_s3.py target/release/decay
+python3 tests/real_s3.py target/release/decay --checksum-mode when_supported
+```
+
+The script uses local test credentials and ephemeral loopback ports. It checks
+fixed-length and chunked uploads, exact downloaded bytes, tag/duration metadata,
+and disconnect cleanup, then removes its container and temporary data. It does
+not require an AWS account.
 
 While running our end-to-end tests, you might run into the following error:
 
