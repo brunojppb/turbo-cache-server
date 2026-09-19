@@ -56,6 +56,7 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
             S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
             # Optional: If not using AWS, provide endpoint like `https://rustfs` for your instance.
+            # See "Endpoint" below.
             S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
             # Optional: If your S3-compatible store does not support requests
             # like https://bucket.hostname.domain/. Setting `S3_USE_PATH_STYLE`
@@ -67,9 +68,7 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x6
             # Valid values: AES256, aws:kms, aws:kms:dsse, aws:fsx
             S3_SERVER_SIDE_ENCRYPTION: "AES256"
             # Optional: Whether the S3 client sends CRC checksums.
-            # "when_required" (the default) maximizes S3-compatible support.
-            # "when_supported" enables additional SDK checksums; confirm
-            # that your storage provider supports them.
+            # "when_required" (the default) sends none. See "Checksums" below.
             S3_CHECKSUM_MODE: "when_required"
 
         # Now you can run your turborepo tasks and rely on the cache server
@@ -98,8 +97,8 @@ for inspiration.
 For folks using Gitlab or any other CI environment that supports Docker,
 you can run the Turbo Cache Server as a docker container.
 
-`S3_CHECKSUM_MODE=when_required` is the compatibility default; `when_supported`
-opts into additional checksums. `TURBO_TOKEN` optionally enables authentication.
+`S3_CHECKSUM_MODE=when_required` is the default and sends no checksum headers.
+See "Checksums" below. `TURBO_TOKEN` optionally enables authentication.
 
 ```shell
 docker run \
@@ -115,22 +114,47 @@ docker run \
   ghcr.io/brunojppb/turbo-cache-server:latest
 ```
 
-## S3 Request Retries
+## S3 Requests, Retries, and Checksums
 
-Turbo Cache Server uses the official AWS SDK for S3 with at most three attempts
-per request (the initial attempt and up to two retries), using backoff for
-transient failures and throttling. Each attempt has a 30-second timeout and
-each operation has a 120-second timeout. Upload parts remain in memory until
-the request finishes, so retries replay the same bytes.
+Turbo Cache Server uses the official AWS SDK for S3. The SDK makes at most
+three attempts per request: the first attempt and up to two retries. It waits
+between attempts after a transient failure or a throttled response. Each
+attempt has a 60-second timeout. Each operation has a 240-second timeout. The
+timeouts cover the request and the response. A download body is the exception:
+it streams after the operation ends. The server holds an upload part in memory
+until the request finishes, so a retry sends the same bytes again.
 
-Artifacts smaller than 8 MiB use one `PutObject`; artifacts of 8 MiB or more
-use direct multipart SDK calls. Both paths preserve artifact tags and duration
-metadata.
-Uploads work with or without `Content-Length`. Multipart parts are sent
-sequentially, with one 8 MiB payload buffer per upload, plus HTTP/SDK buffers
-and the list of completed part ETags. Memory scales with simultaneous uploads;
-there is no global upload memory limit. The fixed part size supports
-up to 10,000 parts (about 78 GiB); larger uploads fail and are aborted.
+Artifacts smaller than 8 MiB use one `PutObject`. Artifacts of 8 MiB or more
+use direct multipart SDK calls. Both paths keep the artifact tag and the
+duration metadata. Earlier server releases stored artifacts of 8 MiB or more
+without tag and duration metadata. Those artifacts keep no metadata until
+Turborepo uploads them again.
+
+Uploads work with or without `Content-Length`. The server uploads the parts one
+at a time. This limits memory to about one 8 MiB part per upload, plus the HTTP
+and SDK buffers and the list of completed part ETags. A large artifact on a slow
+link takes longer than a parallel upload would. Memory grows with the number of
+uploads that run at the same time. There is no global limit on upload memory.
+The fixed part size supports up to 10,000 parts, which is about 78 GiB. A larger
+upload fails, and the server aborts it.
+
+### Checksums
+
+`S3_CHECKSUM_MODE` picks the flexible-checksum headers the SDK sends.
+`when_required`, the default, sends none. With `when_supported`, the SDK adds
+`x-amz-checksum-crc32` to every upload, and `x-amz-checksum-algorithm` when a
+multipart upload starts. Older MinIO, RustFS, and Cloudflare R2 can reject
+those headers. With `when_supported`, the SDK also logs a warning when it
+downloads a multipart object that it uploaded with checksums on. The client
+cannot validate a part-level checksum.
+
+### Endpoint
+
+`S3_ENDPOINT` points the server at a store other than AWS. The server adds
+`https://` to a value with no scheme and removes trailing slashes. An empty
+value stops the server at startup. The server uses rustls for TLS. rustls
+rejects a certificate with no Subject Alternative Name, and a server that
+speaks only TLS 1.0 or TLS 1.1.
 
 ## Authentication
 
@@ -634,9 +658,9 @@ sequenceDiagram
 
 ## Development
 
-Turbo Cache Server requires [Rust](https://www.rust-lang.org/) 1.75 or above. To
-setup your environment, use the rustup script as recommended by the
-[Rust docs](https://www.rust-lang.org/learn/get-started):
+The Rust version is pinned in `rust-toolchain.toml`; rustup installs it on
+first build. To set up your environment, use the rustup script as recommended
+by the [Rust docs](https://www.rust-lang.org/learn/get-started):
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -688,20 +712,6 @@ To execute the test suite, run:
 cargo test
 ```
 
-To check real S3 round trips with an isolated MinIO container, install Docker,
-Python 3, and the AWS CLI, then run:
-
-```shell
-cargo build --release --locked
-python3 tests/real_s3.py target/release/decay
-python3 tests/real_s3.py target/release/decay --checksum-mode when_supported
-```
-
-The script uses local test credentials and ephemeral loopback ports. It checks
-fixed-length and chunked uploads, exact downloaded bytes, tag/duration metadata,
-and disconnect cleanup, then removes its container and temporary data. It does
-not require an AWS account.
-
 While running our end-to-end tests, you might run into the following error:
 
 ```log
@@ -717,3 +727,34 @@ your user. Just run the following command to fix it:
 ```shell
 ulimit -n 1024
 ```
+
+#### Live S3 tests
+
+The live tests talk to a real S3-compatible store. They live in `tests/live/`
+and carry `#[ignore]`, so `cargo test` stays offline. Run them with:
+
+```shell
+cargo live-test
+```
+
+`cargo live-test` is an alias in `.cargo/config.toml`. The tests need a running
+RustFS. Start one with the `docker run ... rustfs/rustfs:latest` command in
+"Setting up your environment" above, then set these environment variables:
+
+- `S3_ENDPOINT`, for example `http://127.0.0.1:9000`
+- `S3_ACCESS_KEY` and `S3_SECRET_KEY`
+- `S3_BUCKET_NAME`. The tests create the bucket when it is missing.
+- `S3_REGION`. Use `us-east-1`, the value the workflow uses. Any other value
+  makes the test send a location constraint when it creates the bucket.
+- `S3_USE_PATH_STYLE=true`
+
+The tests cover fixed-length and chunked uploads at sizes around the 8 MiB
+boundary. They check the exact bytes back, and the tag and duration headers on
+GET and HEAD. They read the stored object straight from S3 and check its
+metadata and its `application/octet-stream` content type. They also check that
+the server aborts an interrupted multipart upload. They run both
+`S3_CHECKSUM_MODE` values.
+
+The GitHub Actions workflow "Live S3 tests"
+(`.github/workflows/live-s3.yml`) runs the same alias. You start it by hand
+through `workflow_dispatch`. It starts RustFS as a service container.
