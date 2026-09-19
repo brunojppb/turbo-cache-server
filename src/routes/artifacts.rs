@@ -84,7 +84,8 @@ impl FromRequest for ArtifactId {
 
         match id {
             Some(id) => ready(Ok(id)),
-            // Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+            // A PUT with no hash is a malformed upload, so 400. A GET or HEAD
+            // with no hash names no artifact, so it is a miss, 404.
             None => {
                 let status = if req.method() == Method::PUT {
                     StatusCode::BAD_REQUEST
@@ -278,7 +279,8 @@ mod tests {
         assert_eq!(id.team, "no_team");
     }
 
-    /// Matches the pre-refactor handlers: PUT answered 400, GET and HEAD 404.
+    /// A PUT with no hash is a malformed upload, so 400. A GET or HEAD with no
+    /// hash names no artifact, so it is a miss, 404.
     #[tokio::test]
     async fn rejects_a_missing_hash_with_the_method_status() {
         let req = TestRequest::default().method(Method::PUT).to_http_request();

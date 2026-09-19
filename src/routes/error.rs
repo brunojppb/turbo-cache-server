@@ -16,7 +16,7 @@ impl ResponseError for CacheError {
             tracing::error!(error = %error, "Storage request failed");
         }
 
-        // Status code with an empty body, matching the pre-refactor handlers.
+        // Turborepo reads the status only, so the body stays empty.
         HttpResponse::new(self.status_code())
     }
 }

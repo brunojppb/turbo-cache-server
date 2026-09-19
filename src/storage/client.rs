@@ -56,8 +56,10 @@ pub(crate) fn build_config(settings: &AppSettings) -> aws_sdk_s3::config::Builde
         .retry_config(aws_sdk_s3::config::retry::RetryConfig::standard().with_max_attempts(3))
         .timeout_config(
             aws_sdk_s3::config::timeout::TimeoutConfig::builder()
-                .operation_timeout(std::time::Duration::from_secs(120))
-                .operation_attempt_timeout(std::time::Duration::from_secs(30))
+                // Three attempts of 60 s, plus backoff, fit inside the operation
+                // timeout, so a slow store never loses an attempt.
+                .operation_timeout(std::time::Duration::from_secs(240))
+                .operation_attempt_timeout(std::time::Duration::from_secs(60))
                 .build(),
         )
         .region(region.clone())
@@ -130,6 +132,28 @@ mod tests {
         assert_eq!(
             config.request_checksum_calculation(),
             Some(&RequestChecksumCalculation::WhenSupported)
+        );
+    }
+
+    /// Every retry must fit inside the operation timeout, or the last attempt
+    /// dies before the store can answer.
+    #[test]
+    fn retries_fit_inside_the_operation_timeout() {
+        let config = build_config(&settings()).build();
+
+        let timeouts = config.timeout_config().expect("no timeout config");
+        let retries = config.retry_config().expect("no retry config");
+        let attempt = timeouts
+            .operation_attempt_timeout()
+            .expect("no attempt timeout");
+        let operation = timeouts.operation_timeout().expect("no operation timeout");
+
+        assert_eq!(attempt, std::time::Duration::from_secs(60));
+        assert_eq!(operation, std::time::Duration::from_secs(240));
+        assert!(
+            operation >= attempt * retries.max_attempts(),
+            "{} attempts of {attempt:?} do not fit inside {operation:?}",
+            retries.max_attempts()
         );
     }
 

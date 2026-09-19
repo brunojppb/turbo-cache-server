@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::pin::Pin;
 
+use aws_sdk_s3::error::DisplayErrorContext;
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, stream};
 use tokio::io::AsyncRead;
 
 use crate::app_settings::AppSettings;
@@ -18,6 +19,29 @@ impl From<UploadError> for CacheError {
     fn from(error: UploadError) -> Self {
         Self::StoreUnavailable(Box::new(error))
     }
+}
+
+/// A failed S3 request, keeping the S3 code, message, and HTTP status.
+#[derive(Debug)]
+struct StoreError(Box<dyn std::error::Error + Send + Sync>);
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `SdkError` prints "service error" and hides the S3 code, message, and
+        // HTTP status in its source chain.
+        write!(f, "{}", DisplayErrorContext(self.0.as_ref()))
+    }
+}
+
+impl std::error::Error for StoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+/// Reports a failed S3 request.
+fn store_unavailable(error: impl std::error::Error + Send + Sync + 'static) -> CacheError {
+    CacheError::StoreUnavailable(Box::new(StoreError(Box::new(error))))
 }
 
 pub struct Storage {
@@ -51,7 +75,7 @@ impl Storage {
         }
     }
 
-    /// Preserve the object keys used by the previous S3 client.
+    /// The object key for an artifact path.
     fn key(path: &str) -> &str {
         path.strip_prefix('/').unwrap_or(path)
     }
@@ -72,8 +96,21 @@ impl ArtifactStore for Storage {
             .send()
             .await
         {
-            Ok(object) => Ok(Box::pin(tokio_util::io::ReaderStream::new(
-                object.body.into_async_read(),
+            // Yield the chunks the SDK already produced, so no byte is copied
+            // into a second buffer on the way out. A failed body never polls
+            // again, so the error ends the stream.
+            Ok(object) => Ok(Box::pin(stream::unfold(
+                Some(object.body),
+                |state| async move {
+                    let mut body = state?;
+                    match body.next().await? {
+                        Ok(chunk) => Some((Ok(chunk), Some(body))),
+                        Err(error) => {
+                            tracing::warn!(error = %error, "S3 download body failed");
+                            Some((Err(std::io::Error::other(error)), None))
+                        }
+                    }
+                },
             ))),
             Err(error) => {
                 // A 404 with no XML body (S3 sends one, but the wire contract
@@ -88,7 +125,7 @@ impl ArtifactStore for Storage {
                 if not_found {
                     Err(CacheError::NotFound)
                 } else {
-                    Err(CacheError::StoreUnavailable(Box::new(error)))
+                    Err(store_unavailable(error))
                 }
             }
         }
@@ -113,7 +150,7 @@ impl ArtifactStore for Storage {
                 if not_found {
                     Err(CacheError::NotFound)
                 } else {
-                    Err(CacheError::StoreUnavailable(Box::new(error)))
+                    Err(store_unavailable(error))
                 }
             }
         }
@@ -139,9 +176,11 @@ impl ArtifactStore for Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
-    fn keys_preserve_the_previous_clients_single_leading_slash_removal() {
+    fn key_strips_one_leading_slash() {
         assert_eq!(Storage::key("/team/hash"), "team/hash");
         assert_eq!(Storage::key("//team/hash"), "/team/hash");
         assert_eq!(Storage::key("team/hash"), "team/hash");
@@ -172,17 +211,36 @@ mod tests {
 
         assert!(!debug_output.contains("super-secret-access-key"));
         assert!(!debug_output.contains("super-secret-secret-key"));
+        assert!(debug_output.contains("turbo"), "bucket name should show");
     }
 
-    /// Storage ends up in tracing spans, which record it through `Debug`.
-    #[test]
-    fn debug_output_hides_s3_credentials_after_the_sdk_swap() {
-        let storage = Storage::new(&settings_with_credentials());
+    /// An `SdkError` keeps the S3 code out of its own `Display`, and a refusal
+    /// must not read as a cache miss.
+    #[tokio::test]
+    async fn get_errors_report_the_s3_error_code() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(403).set_body_raw(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"#,
+                "application/xml",
+            ))
+            .mount(&server)
+            .await;
+        let mut settings = settings_with_credentials();
+        settings.s3_endpoint = Some(server.uri());
 
-        let debug_output = format!("{storage:?}");
+        let error = Storage::new(&settings)
+            .get("/team/hash")
+            .await
+            .err()
+            .expect("the GET must fail");
 
-        assert!(!debug_output.contains("super-secret-access-key"));
-        assert!(!debug_output.contains("super-secret-secret-key"));
-        assert!(debug_output.contains("turbo"), "bucket name should show");
+        let message = error.to_string();
+        assert!(message.contains("AccessDenied"), "message was: {message}");
+        assert!(
+            matches!(error, CacheError::StoreUnavailable(_)),
+            "a refused GET is not a cache miss: {error:?}"
+        );
     }
 }

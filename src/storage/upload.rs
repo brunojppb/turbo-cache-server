@@ -4,6 +4,7 @@ use std::io;
 use std::time::Duration;
 
 use aws_sdk_s3::config::RequestChecksumCalculation;
+use aws_sdk_s3::error::DisplayErrorContext;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{
     ChecksumAlgorithm, CompletedMultipartUpload, CompletedPart, ServerSideEncryption,
@@ -13,10 +14,11 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use crate::app_settings::S3ServerSideEncryption;
 
 /// Bodies below this size use PutObject; larger bodies use sequential parts.
-/// Only one replayable part is buffered per upload, including SDK retries.
+/// At most one part sits in memory, and SDK retries replay that part.
 pub(crate) const PART_SIZE: u64 = 8 * 1024 * 1024;
 const MAX_PARTS: i32 = 10_000;
 const ABORT_TIMEOUT: Duration = Duration::from_secs(10);
+const CONTENT_TYPE: &str = "application/octet-stream";
 
 #[derive(Debug)]
 pub(crate) enum UploadError {
@@ -26,7 +28,15 @@ pub(crate) enum UploadError {
 impl fmt::Display for UploadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Failed(error) => write!(f, "S3 upload failed: {error}"),
+            // `SdkError` prints "service error" and hides the S3 code, message,
+            // and HTTP status in its source chain.
+            Self::Failed(error) => {
+                write!(
+                    f,
+                    "S3 upload failed: {}",
+                    DisplayErrorContext(error.as_ref())
+                )
+            }
         }
     }
 }
@@ -52,24 +62,24 @@ struct MultipartUpload {
     id: Option<String>,
 }
 
-impl MultipartUpload {
-    async fn abort(&mut self) {
-        if let Some(id) = &self.id {
-            abort(&self.s3, &self.bucket, &self.key, id).await;
-            self.id = None;
-        }
-    }
-}
-
 impl Drop for MultipartUpload {
     fn drop(&mut self) {
-        if let Some(id) = self.id.take() {
-            let s3 = self.s3.clone();
-            let bucket = self.bucket.clone();
-            let key = self.key.clone();
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        let Some(id) = self.id.take() else { return };
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                let s3 = self.s3.clone();
+                let bucket = self.bucket.clone();
+                let key = self.key.clone();
                 runtime.spawn(async move { abort(&s3, &bucket, &key, &id).await });
             }
+            // Outside a runtime nothing can send the abort, so the parts stay in
+            // the bucket until its lifecycle rule removes them.
+            Err(_) => tracing::warn!(
+                bucket = %self.bucket,
+                key = %self.key,
+                upload_id = %id,
+                "Leaked an unfinished multipart upload"
+            ),
         }
     }
 }
@@ -83,8 +93,33 @@ async fn abort(s3: &aws_sdk_s3::Client, bucket: &str, key: &str, id: &str) {
         .send();
     match tokio::time::timeout(ABORT_TIMEOUT, request).await {
         Ok(Ok(_)) => {}
-        Ok(Err(error)) => tracing::warn!(%error, "Could not abort multipart upload"),
-        Err(_) => tracing::warn!("Timed out aborting multipart upload"),
+        // `NoSuchUpload` is the completion whose response never arrived: the
+        // upload is already finished, so there is nothing left to clean up.
+        Ok(Err(error))
+            if error
+                .as_service_error()
+                .is_some_and(|e| e.is_no_such_upload()) =>
+        {
+            tracing::debug!(
+                bucket,
+                key,
+                upload_id = id,
+                "Multipart upload already gone; nothing to abort"
+            )
+        }
+        Ok(Err(error)) => tracing::warn!(
+            bucket,
+            key,
+            upload_id = id,
+            error = %DisplayErrorContext(&error),
+            "Could not abort multipart upload"
+        ),
+        Err(_) => tracing::warn!(
+            bucket,
+            key,
+            upload_id = id,
+            "Timed out aborting multipart upload"
+        ),
     }
 }
 
@@ -131,6 +166,7 @@ impl Uploader {
                 .key(path)
                 .set_metadata(metadata.cloned())
                 .set_server_side_encryption(self.encryption())
+                .content_type(CONTENT_TYPE)
                 .body(ByteStream::from(head))
                 .send()
                 .await
@@ -158,6 +194,7 @@ impl Uploader {
                 .key(&key)
                 .set_metadata(metadata)
                 .set_server_side_encryption(encryption)
+                .content_type(CONTENT_TYPE)
                 .set_checksum_algorithm(checksum_algorithm)
                 .send()
                 .await
@@ -178,10 +215,9 @@ impl Uploader {
         .map_err(failed)??;
 
         let result = self.put_parts(&upload, reader, head).await;
+        // Clearing the ID stops the guard from aborting an upload that finished.
         if result.is_ok() {
             upload.id = None;
-        } else {
-            upload.abort().await;
         }
         result
     }
@@ -377,7 +413,31 @@ mod tests {
             header(&requests[0], "x-amz-meta-x-artifact-tag").as_deref(),
             Some(TAG)
         );
+        assert_eq!(
+            header(&requests[0], "content-type").as_deref(),
+            Some("application/octet-stream")
+        );
         assert_eq!(requests[0].body, vec![7u8; 12], "body must be sent raw");
+    }
+
+    /// `SdkError` prints "service error" on its own, so the S3 code must come
+    /// from the source chain.
+    #[tokio::test]
+    async fn upload_errors_report_the_s3_error_code() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(403).set_body_raw(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"#,
+                "application/xml",
+            ))
+            .mount(&server)
+            .await;
+
+        let error = upload(&server, 12).await.expect_err("upload must fail");
+
+        let message = error.to_string();
+        assert!(message.contains("AccessDenied"), "message was: {message}");
     }
 
     /// 8,388,607 bytes: the size that already worked.
@@ -415,6 +475,10 @@ mod tests {
             header(initiate, "x-amz-meta-x-artifact-tag").as_deref(),
             Some(TAG),
             "issue #620: the tag must be set when the multipart upload starts"
+        );
+        assert_eq!(
+            header(initiate, "content-type").as_deref(),
+            Some("application/octet-stream")
         );
 
         let uploaded: usize = requests
@@ -613,6 +677,33 @@ mod tests {
                 .iter()
                 .any(|r| r.method.as_str() == "POST" && r.url.query() == Some("uploadId=upload-1"))
         );
+    }
+
+    /// A completion whose response is lost leaves nothing to abort, and the
+    /// store answers the abort with `NoSuchUpload`.
+    #[tokio::test]
+    async fn abort_survives_a_missing_multipart_upload() {
+        let server = MockServer::start().await;
+        mount_multipart(&server).await;
+        Mock::given(method("POST"))
+            .and(query_param("uploadId", "upload-1"))
+            .respond_with(ResponseTemplate::new(403))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .respond_with(ResponseTemplate::new(404).set_body_raw(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>NoSuchUpload</Code><Message>The upload does not exist</Message></Error>"#,
+                "application/xml",
+            ))
+            .with_priority(1)
+            .mount(&server)
+            .await;
+
+        assert!(upload(&server, PART_SIZE as usize).await.is_err());
+
+        assert_aborted(&server).await;
     }
 
     #[tokio::test]
