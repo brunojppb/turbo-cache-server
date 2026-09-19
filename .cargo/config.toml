@@ -1,0 +1,6 @@
+[alias]
+# Live round trips against a real S3-compatible store. Every test in the `live`
+# target is ignored by default. One thread: each test streams tens of megabytes
+# through the server and the store, so one thread keeps memory and load
+# predictable.
+live-test = "test --test live -- --ignored --test-threads=1"

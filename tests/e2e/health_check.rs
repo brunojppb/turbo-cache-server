@@ -16,7 +16,7 @@ async fn check_endpoint(endpoint: &str, app: &crate::helpers::TestApp) -> Respon
     let client = reqwest::Client::new();
 
     client
-        .get(format!("{}{}", &app.address, endpoint))
+        .get(format!("{}{}", app.address, endpoint))
         .send()
         .await
         .unwrap_or_else(|_| panic!("Failed to request {endpoint}"))

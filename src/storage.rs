@@ -1,162 +1,174 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::pin::Pin;
 
-use s3::{Bucket, Region, creds::Credentials, error::S3Error, request::ResponseDataStream};
-use secrecy::ExposeSecret;
+use aws_sdk_s3::error::DisplayErrorContext;
+use bytes::Bytes;
+use futures::{Stream, stream};
 use tokio::io::AsyncRead;
 
-use crate::app_settings::{AppSettings, S3ServerSideEncryption};
+use crate::app_settings::AppSettings;
+use crate::domain::CacheError;
+use crate::storage::upload::{UploadError, Uploader};
+use crate::usecases::ArtifactStore;
 
-const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
+mod client;
+mod upload;
 
+impl From<UploadError> for CacheError {
+    fn from(error: UploadError) -> Self {
+        Self::StoreUnavailable(Box::new(error))
+    }
+}
+
+/// A failed S3 request, keeping the S3 code, message, and HTTP status.
 #[derive(Debug)]
-pub enum StorageError {
-    /// The bucket answered, but holds no object under that path.
-    NotFound,
-    /// The bucket could not be reached, or rejected the request.
-    Unreachable(S3Error),
-}
+struct StoreError(Box<dyn std::error::Error + Send + Sync>);
 
-impl fmt::Display for StorageError {
+impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound => write!(f, "no such object in the bucket"),
-            Self::Unreachable(error) => write!(f, "S3 request failed: {error}"),
-        }
+        // `SdkError` prints "service error" and hides the S3 code, message, and
+        // HTTP status in its source chain.
+        write!(f, "{}", DisplayErrorContext(self.0.as_ref()))
     }
 }
 
-impl std::error::Error for StorageError {
+impl std::error::Error for StoreError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NotFound => None,
-            Self::Unreachable(error) => Some(error),
-        }
+        Some(self.0.as_ref())
     }
 }
 
-impl From<S3Error> for StorageError {
-    fn from(error: S3Error) -> Self {
-        match error {
-            S3Error::HttpFailWithBody(404, _) => Self::NotFound,
-            other => Self::Unreachable(other),
-        }
-    }
+/// Reports a failed S3 request.
+fn store_unavailable(error: impl std::error::Error + Send + Sync + 'static) -> CacheError {
+    CacheError::StoreUnavailable(Box::new(StoreError(Box::new(error))))
 }
 
 pub struct Storage {
-    bucket: Box<Bucket>,
-    server_side_encryption: Option<S3ServerSideEncryption>,
+    s3: aws_sdk_s3::Client,
+    uploader: Uploader,
+    bucket: String,
 }
 
 impl fmt::Debug for Storage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Storage")
-            .field("bucket_name", &self.bucket.name)
-            .field("region", &self.bucket.region)
-            .field("server_side_encryption", &self.server_side_encryption)
+            .field("bucket_name", &self.bucket)
             .finish_non_exhaustive()
     }
 }
 
 impl Storage {
     pub fn new(settings: &AppSettings) -> Self {
-        let region = match &settings.s3_endpoint {
-            Some(endpoint) => Region::Custom {
-                endpoint: endpoint.clone(),
-                region: settings.s3_region.clone(),
-            },
-            None => settings
-                .s3_region
-                .parse()
-                .expect("AWS region should be present"),
-        };
-
-        let credentials = match (&settings.s3_access_key, &settings.s3_secret_key) {
-            (Some(access_key), Some(secret_key)) => Credentials::new(
-                Some(access_key.expose_secret()),
-                Some(secret_key.expose_secret()),
-                None,
-                None,
-                None,
-            )
-            .unwrap(),
-            // If your Credentials are handled via IAM policies and allow
-            // your network to access S3 directly without any credentials setup
-            // Then no need to setup credentials at all. Defaults should be fine
-            _ => Credentials::default().expect("Could not use default AWS credentials"),
-        };
-
-        let mut bucket = Bucket::new(&settings.s3_bucket_name, region, credentials)
-            .expect("Could not create a S3 bucket");
-
-        if settings.s3_use_path_style {
-            bucket.set_path_style()
-        }
+        let config = client::build_config(settings);
+        let s3 = aws_sdk_s3::Client::from_conf(config.build());
+        let uploader = Uploader::new(
+            s3.clone(),
+            settings.s3_bucket_name.clone(),
+            settings.s3_server_side_encryption,
+        );
 
         Self {
-            bucket,
-            server_side_encryption: settings.s3_server_side_encryption,
+            s3,
+            uploader,
+            bucket: settings.s3_bucket_name.clone(),
         }
     }
+
+    /// The object key for an artifact path.
+    fn key(path: &str) -> &str {
+        path.strip_prefix('/').unwrap_or(path)
+    }
+}
+
+impl ArtifactStore for Storage {
+    type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>;
+    type StreamError = std::io::Error;
 
     /// Streams the file from the S3 bucket
     #[tracing::instrument(name = "get S3 file")]
-    pub async fn get_file(&self, path: &str) -> Result<ResponseDataStream, StorageError> {
-        let file = self.bucket.get_object_stream(path).await?;
-        Ok(file)
-    }
-
-    /// Returns the user metadata stored on the S3 object, or reports that the
-    /// object is missing.
-    #[tracing::instrument(name = "head S3 file")]
-    pub async fn head_file(&self, path: &str) -> Result<HashMap<String, String>, StorageError> {
-        let (head_result, _status) = self.bucket.head_object(path).await?;
-        Ok(head_result.metadata.unwrap_or_default())
-    }
-
-    /// Returns the user metadata stored on the S3 object.
-    /// A failed lookup must not fail an otherwise good download, so it reports
-    /// no metadata rather than an error.
-    #[tracing::instrument(name = "get S3 object metadata")]
-    pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
-        match self.head_file(path).await {
-            Ok(metadata) => metadata,
+    async fn get(&self, path: &str) -> Result<Self::ByteStream, CacheError> {
+        match self
+            .s3
+            .get_object()
+            .bucket(&self.bucket)
+            .key(Self::key(path))
+            .send()
+            .await
+        {
+            // Yield the chunks the SDK already produced, so no byte is copied
+            // into a second buffer on the way out. A failed body never polls
+            // again, so the error ends the stream.
+            Ok(object) => Ok(Box::pin(stream::unfold(
+                Some(object.body),
+                |state| async move {
+                    let mut body = state?;
+                    match body.next().await? {
+                        Ok(chunk) => Some((Ok(chunk), Some(body))),
+                        Err(error) => {
+                            tracing::warn!(error = %error, "S3 download body failed");
+                            Some((Err(std::io::Error::other(error)), None))
+                        }
+                    }
+                },
+            ))),
             Err(error) => {
-                tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
-                HashMap::new()
+                // A 404 with no XML body (S3 sends one, but the wire contract
+                // doesn't guarantee it) leaves the SDK unable to tell NoSuchKey
+                // apart from any other not-found response, so the HTTP status
+                // is checked too.
+                let not_found = error.as_service_error().is_some_and(|e| e.is_no_such_key())
+                    || error
+                        .raw_response()
+                        .is_some_and(|response| response.status().as_u16() == 404);
+
+                if not_found {
+                    Err(CacheError::NotFound)
+                } else {
+                    Err(store_unavailable(error))
+                }
             }
         }
     }
 
-    /// Streams the given data to the S3 bucket under the given path.
-    /// Each metadata key-value pair is persisted as S3 user metadata
-    /// (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
-    #[tracing::instrument(name = "put S3 file stream", skip(reader))]
-    pub async fn put_file_stream<R>(
+    #[tracing::instrument(name = "head S3 file")]
+    async fn head(&self, path: &str) -> Result<HashMap<String, String>, CacheError> {
+        match self
+            .s3
+            .head_object()
+            .bucket(&self.bucket)
+            .key(Self::key(path))
+            .send()
+            .await
+        {
+            Ok(head) => Ok(head.metadata.unwrap_or_default()),
+            Err(error) => {
+                let not_found = error.as_service_error().is_some_and(|e| e.is_not_found())
+                    || error
+                        .raw_response()
+                        .is_some_and(|response| response.status().as_u16() == 404);
+                if not_found {
+                    Err(CacheError::NotFound)
+                } else {
+                    Err(store_unavailable(error))
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(name = "put S3 file stream", skip(reader, metadata))]
+    async fn put<R>(
         &self,
         path: &str,
         reader: &mut R,
-        metadata: &HashMap<String, String>,
-    ) -> Result<(), StorageError>
+        metadata: HashMap<String, String>,
+    ) -> Result<(), CacheError>
     where
         R: AsyncRead + Unpin,
     {
-        let mut builder = self.bucket.put_object_stream_builder(path);
-
-        if let Some(encryption) = self.server_side_encryption {
-            builder = builder
-                .with_header(SSE_HEADER, encryption.as_str())
-                .expect("Invalid server-side encryption header value");
-        }
-
-        for (key, value) in metadata {
-            builder = builder
-                .with_metadata(key, value)
-                .expect("Invalid metadata value");
-        }
-
-        builder.execute_stream(reader).await?;
+        self.uploader
+            .put(Self::key(path), reader, Some(&metadata))
+            .await?;
         Ok(())
     }
 }
@@ -164,6 +176,15 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn key_strips_one_leading_slash() {
+        assert_eq!(Storage::key("/team/hash"), "team/hash");
+        assert_eq!(Storage::key("//team/hash"), "/team/hash");
+        assert_eq!(Storage::key("team/hash"), "team/hash");
+    }
 
     fn settings_with_credentials() -> AppSettings {
         AppSettings {
@@ -176,6 +197,7 @@ mod tests {
             s3_region: "eu-central-1".to_owned(),
             s3_bucket_name: "turbo".to_owned(),
             s3_server_side_encryption: None,
+            s3_checksum_mode: crate::app_settings::S3ChecksumMode::WhenRequired,
             turbo_token: None,
         }
     }
@@ -189,5 +211,36 @@ mod tests {
 
         assert!(!debug_output.contains("super-secret-access-key"));
         assert!(!debug_output.contains("super-secret-secret-key"));
+        assert!(debug_output.contains("turbo"), "bucket name should show");
+    }
+
+    /// An `SdkError` keeps the S3 code out of its own `Display`, and a refusal
+    /// must not read as a cache miss.
+    #[tokio::test]
+    async fn get_errors_report_the_s3_error_code() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(403).set_body_raw(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"#,
+                "application/xml",
+            ))
+            .mount(&server)
+            .await;
+        let mut settings = settings_with_credentials();
+        settings.s3_endpoint = Some(server.uri());
+
+        let error = Storage::new(&settings)
+            .get("/team/hash")
+            .await
+            .err()
+            .expect("the GET must fail");
+
+        let message = error.to_string();
+        assert!(message.contains("AccessDenied"), "message was: {message}");
+        assert!(
+            matches!(error, CacheError::StoreUnavailable(_)),
+            "a refused GET is not a cache miss: {error:?}"
+        );
     }
 }

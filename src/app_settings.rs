@@ -55,6 +55,44 @@ impl FromStr for S3ServerSideEncryption {
     }
 }
 
+/// Whether the S3 client sends and validates CRC checksums. With checksums on,
+/// the SDK adds `x-amz-checksum-crc32` to PutObject and UploadPart, and
+/// `x-amz-checksum-algorithm` to CreateMultipartUpload. Some S3-compatible
+/// stores reject those headers: older MinIO, RustFS, and Cloudflare R2. The
+/// default sends none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum S3ChecksumMode {
+    #[default]
+    WhenRequired,
+    WhenSupported,
+}
+
+impl S3ChecksumMode {
+    /// Returns the `S3_CHECKSUM_MODE` value for this mode.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::WhenRequired => "when_required",
+            Self::WhenSupported => "when_supported",
+        }
+    }
+}
+
+impl FromStr for S3ChecksumMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "when_required" => Ok(Self::WhenRequired),
+            "when_supported" => Ok(Self::WhenSupported),
+            _ => Err(format!(
+                "Invalid S3_CHECKSUM_MODE value: '{}'. \
+                 Valid values are: when_required, when_supported",
+                s
+            )),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppSettings {
     /// Host where to bind the server to
@@ -73,7 +111,30 @@ pub struct AppSettings {
     pub s3_bucket_name: String,
     /// The server-side encryption algorithm to use for the S3 bucket.
     pub s3_server_side_encryption: Option<S3ServerSideEncryption>,
+    /// Whether the S3 client sends and validates CRC checksums.
+    pub s3_checksum_mode: S3ChecksumMode,
     pub turbo_token: Option<SecretString>,
+}
+
+/// Turns an `S3_ENDPOINT` value into a URL the S3 client accepts.
+pub fn normalize_endpoint(value: &str) -> Result<String, String> {
+    let endpoint = value.trim().trim_end_matches('/');
+    let http = endpoint.len() >= 7 && endpoint[..7].eq_ignore_ascii_case("http://");
+    let https = endpoint.len() >= 8 && endpoint[..8].eq_ignore_ascii_case("https://");
+
+    match endpoint {
+        "" => Err(
+            "S3_ENDPOINT is set but empty. Unset it to use AWS, or set a URL \
+             such as https://s3.example.com"
+                .to_owned(),
+        ),
+        _ if http || https => Ok(endpoint.to_owned()),
+        _ if endpoint.contains("://") => Err(format!(
+            "Invalid S3_ENDPOINT value: '{endpoint}'. Only http and https are supported"
+        )),
+        // `endpoint_url` needs a scheme and fails every request without one.
+        _ => Ok(format!("https://{endpoint}")),
+    }
 }
 
 pub fn get_settings() -> AppSettings {
@@ -87,7 +148,9 @@ pub fn get_settings() -> AppSettings {
     let s3_access_key = env::var("S3_ACCESS_KEY").ok().map(SecretString::from);
     let s3_secret_key = env::var("S3_SECRET_KEY").ok().map(SecretString::from);
     let s3_region = env::var("S3_REGION").unwrap_or("eu-central-1".to_owned());
-    let s3_endpoint = env::var("S3_ENDPOINT").ok();
+    let s3_endpoint = env::var("S3_ENDPOINT")
+        .ok()
+        .map(|value| normalize_endpoint(&value).expect("Invalid S3_ENDPOINT value"));
     let s3_use_path_style = env::var("S3_USE_PATH_STYLE")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
@@ -95,6 +158,12 @@ pub fn get_settings() -> AppSettings {
         v.parse::<S3ServerSideEncryption>()
             .expect("Invalid S3_SERVER_SIDE_ENCRYPTION value")
     });
+    let s3_checksum_mode = env::var("S3_CHECKSUM_MODE")
+        .map(|v| {
+            v.parse::<S3ChecksumMode>()
+                .expect("Invalid S3_CHECKSUM_MODE value")
+        })
+        .unwrap_or_default();
 
     // by default,we scope Turborepo artifacts using the "TURBO_TEAM" name sent by turborepo
     // which creates a folder within the S3 bucket and uploads everything under that.
@@ -112,6 +181,7 @@ pub fn get_settings() -> AppSettings {
         s3_bucket_name,
         s3_use_path_style,
         s3_server_side_encryption,
+        s3_checksum_mode,
         turbo_token,
     }
 }
@@ -183,5 +253,95 @@ mod tests {
         let encryption = S3ServerSideEncryption::Aes256;
         let s: &str = encryption.as_ref();
         assert_eq!(s, "AES256");
+    }
+
+    #[test]
+    fn parse_when_required_checksum_mode() {
+        let result = "when_required".parse::<S3ChecksumMode>();
+        assert_eq!(result, Ok(S3ChecksumMode::WhenRequired));
+    }
+
+    #[test]
+    fn parse_when_supported_checksum_mode() {
+        let result = "when_supported".parse::<S3ChecksumMode>();
+        assert_eq!(result, Ok(S3ChecksumMode::WhenSupported));
+    }
+
+    #[test]
+    fn parse_invalid_checksum_mode_returns_error() {
+        let result = "sometimes".parse::<S3ChecksumMode>();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Invalid S3_CHECKSUM_MODE value")
+        );
+    }
+
+    #[test]
+    fn checksum_mode_defaults_to_when_required() {
+        assert_eq!(S3ChecksumMode::default(), S3ChecksumMode::WhenRequired);
+    }
+
+    #[test]
+    fn checksum_mode_round_trips_through_its_string() {
+        for mode in [S3ChecksumMode::WhenRequired, S3ChecksumMode::WhenSupported] {
+            assert_eq!(mode.as_str().parse::<S3ChecksumMode>(), Ok(mode));
+        }
+        assert_eq!(S3ChecksumMode::WhenRequired.as_str(), "when_required");
+        assert_eq!(S3ChecksumMode::WhenSupported.as_str(), "when_supported");
+    }
+
+    #[test]
+    fn endpoint_drops_trailing_slashes() {
+        assert_eq!(
+            normalize_endpoint("http://localhost:9000/"),
+            Ok("http://localhost:9000".to_owned())
+        );
+        assert_eq!(
+            normalize_endpoint("http://localhost:9000///"),
+            Ok("http://localhost:9000".to_owned())
+        );
+        assert_eq!(
+            normalize_endpoint("http://host/path/"),
+            Ok("http://host/path".to_owned())
+        );
+    }
+
+    #[test]
+    fn endpoint_without_a_scheme_gets_https() {
+        assert_eq!(
+            normalize_endpoint("minio:9000"),
+            Ok("https://minio:9000".to_owned())
+        );
+    }
+
+    #[test]
+    fn endpoint_with_an_http_scheme_stays_as_it_is() {
+        assert_eq!(normalize_endpoint("https://x"), Ok("https://x".to_owned()));
+        assert_eq!(
+            normalize_endpoint("HTTPS://Host"),
+            Ok("HTTPS://Host".to_owned())
+        );
+    }
+
+    #[test]
+    fn endpoint_with_another_scheme_is_rejected() {
+        assert!(normalize_endpoint("ftp://x").is_err());
+        assert!(normalize_endpoint("://x").is_err());
+    }
+
+    #[test]
+    fn endpoint_trims_surrounding_whitespace() {
+        assert_eq!(
+            normalize_endpoint("  http://localhost:9000  "),
+            Ok("http://localhost:9000".to_owned())
+        );
+    }
+
+    #[test]
+    fn empty_endpoint_is_rejected() {
+        assert!(normalize_endpoint("").is_err());
+        assert!(normalize_endpoint("  ").is_err());
     }
 }
