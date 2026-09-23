@@ -3,7 +3,7 @@
 # which is the single source of truth for the pinned version.
 ARG RUST_VERSION=1.96.1
 
-FROM alpine:3.24.1 AS ca-certificates
+FROM alpine:3.24.2 AS ca-certificates
 RUN apk add --no-cache ca-certificates
 
 FROM --platform=$BUILDPLATFORM rust:alpine AS chef
