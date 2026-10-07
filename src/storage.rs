@@ -1,45 +1,24 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::pin::Pin;
 
-use s3::{Bucket, Region, creds::Credentials, error::S3Error, request::ResponseDataStream};
+use bytes::Bytes;
+use futures::Stream;
+use s3::{Bucket, Region, creds::Credentials, error::S3Error};
 use secrecy::ExposeSecret;
 use tokio::io::AsyncRead;
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
+use crate::domain::CacheError;
+use crate::usecases::ArtifactStore;
 
 const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
 
-#[derive(Debug)]
-pub enum StorageError {
-    /// The bucket answered, but holds no object under that path.
-    NotFound,
-    /// The bucket could not be reached, or rejected the request.
-    Unreachable(S3Error),
-}
-
-impl fmt::Display for StorageError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NotFound => write!(f, "no such object in the bucket"),
-            Self::Unreachable(error) => write!(f, "S3 request failed: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for StorageError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::NotFound => None,
-            Self::Unreachable(error) => Some(error),
-        }
-    }
-}
-
-impl From<S3Error> for StorageError {
+impl From<S3Error> for CacheError {
     fn from(error: S3Error) -> Self {
         match error {
             S3Error::HttpFailWithBody(404, _) => Self::NotFound,
-            other => Self::Unreachable(other),
+            other => Self::StoreUnavailable(Box::new(other)),
         }
     }
 }
@@ -99,46 +78,42 @@ impl Storage {
             server_side_encryption: settings.s3_server_side_encryption,
         }
     }
+}
 
-    /// Streams the file from the S3 bucket
+impl ArtifactStore for Storage {
+    // The s3 crate already returns its stream boxed; this adds no boxing.
+    type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, S3Error>> + Send>>;
+    type StreamError = S3Error;
+
     #[tracing::instrument(name = "get S3 file")]
-    pub async fn get_file(&self, path: &str) -> Result<ResponseDataStream, StorageError> {
-        let file = self.bucket.get_object_stream(path).await?;
-        Ok(file)
+    async fn get(&self, path: &str) -> Result<Self::ByteStream, CacheError> {
+        let response = self
+            .bucket
+            .get_object_stream(path)
+            .await
+            .map_err(CacheError::from)?;
+        Ok(response.bytes)
     }
 
-    /// Returns the user metadata stored on the S3 object, or reports that the
-    /// object is missing.
     #[tracing::instrument(name = "head S3 file")]
-    pub async fn head_file(&self, path: &str) -> Result<HashMap<String, String>, StorageError> {
-        let (head_result, _status) = self.bucket.head_object(path).await?;
+    async fn head(&self, path: &str) -> Result<HashMap<String, String>, CacheError> {
+        let (head_result, _status) = self
+            .bucket
+            .head_object(path)
+            .await
+            .map_err(CacheError::from)?;
         Ok(head_result.metadata.unwrap_or_default())
     }
 
-    /// Returns the user metadata stored on the S3 object.
-    /// A failed lookup must not fail an otherwise good download, so it reports
-    /// no metadata rather than an error.
-    #[tracing::instrument(name = "get S3 object metadata")]
-    pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
-        match self.head_file(path).await {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
-                HashMap::new()
-            }
-        }
-    }
-
-    /// Streams the given data to the S3 bucket under the given path.
     /// Each metadata key-value pair is persisted as S3 user metadata
     /// (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
-    #[tracing::instrument(name = "put S3 file stream", skip(reader))]
-    pub async fn put_file_stream<R>(
+    #[tracing::instrument(name = "put S3 file stream", skip(reader, metadata))]
+    async fn put<R>(
         &self,
         path: &str,
         reader: &mut R,
-        metadata: &HashMap<String, String>,
-    ) -> Result<(), StorageError>
+        metadata: HashMap<String, String>,
+    ) -> Result<(), CacheError>
     where
         R: AsyncRead + Unpin,
     {
@@ -150,13 +125,16 @@ impl Storage {
                 .expect("Invalid server-side encryption header value");
         }
 
-        for (key, value) in metadata {
+        for (key, value) in &metadata {
             builder = builder
                 .with_metadata(key, value)
                 .expect("Invalid metadata value");
         }
 
-        builder.execute_stream(reader).await?;
+        builder
+            .execute_stream(reader)
+            .await
+            .map_err(CacheError::from)?;
         Ok(())
     }
 }
@@ -164,6 +142,7 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::CacheError;
 
     fn settings_with_credentials() -> AppSettings {
         AppSettings {
@@ -189,5 +168,22 @@ mod tests {
 
         assert!(!debug_output.contains("super-secret-access-key"));
         assert!(!debug_output.contains("super-secret-secret-key"));
+    }
+
+    #[test]
+    fn maps_a_404_to_not_found() {
+        let error = S3Error::HttpFailWithBody(404, "no such key".to_owned());
+
+        assert!(matches!(CacheError::from(error), CacheError::NotFound));
+    }
+
+    #[test]
+    fn maps_other_failures_to_store_unavailable() {
+        let error = S3Error::HttpFailWithBody(500, "boom".to_owned());
+
+        assert!(matches!(
+            CacheError::from(error),
+            CacheError::StoreUnavailable(_)
+        ));
     }
 }

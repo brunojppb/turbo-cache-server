@@ -17,11 +17,12 @@ use crate::{
         post_list_team_artifacts, put_file,
     },
     storage::Storage,
+    usecases::ArtifactCache,
 };
 
 pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, std::io::Error> {
-    let storage = Storage::new(&app_settings);
-    let storage = web::Data::new(storage);
+    let cache = ArtifactCache::new(Storage::new(&app_settings));
+    let cache = web::Data::new(cache);
     let port = listener
         .local_addr()
         .expect("TCPListener should be valid")
@@ -46,7 +47,7 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
             .route(HEALTH_CHECK_PATH, web::get().to(health_check))
             .service(artifacts_scope)
             .app_data(app_settings.clone())
-            .app_data(storage.clone())
+            .app_data(cache.clone())
     })
     .listen(listener)?
     .run();
