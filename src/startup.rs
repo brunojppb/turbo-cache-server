@@ -10,6 +10,7 @@ use tracing_actix_web::TracingLogger;
 
 use crate::{
     app_settings::AppSettings,
+    artifact_cache::ArtifactCache,
     auth::turbo_token::validate_turbo_token,
     http_span::DecayRootSpanBuilder,
     routes::{
@@ -20,8 +21,7 @@ use crate::{
 };
 
 pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, std::io::Error> {
-    let storage = Storage::new(&app_settings);
-    let storage = web::Data::new(storage);
+    let cache = web::Data::new(ArtifactCache::new(Storage::new(&app_settings)));
     let port = listener
         .local_addr()
         .expect("TCPListener should be valid")
@@ -46,7 +46,7 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
             .route(HEALTH_CHECK_PATH, web::get().to(health_check))
             .service(artifacts_scope)
             .app_data(app_settings.clone())
-            .app_data(storage.clone())
+            .app_data(cache.clone())
     })
     .listen(listener)?
     .run();

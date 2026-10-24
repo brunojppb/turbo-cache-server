@@ -344,6 +344,47 @@ async fn download_artifact_from_s3_test() {
     assert!(response.text().await.unwrap().as_bytes() == file_mock.file_bytes);
 }
 
+#[tokio::test]
+async fn download_keeps_streaming_bytes_when_metadata_lookup_fails() {
+    let app = spawn_app(None).await;
+    let file = TurboArtifactFileMock::new();
+    let object_path = format!("/{}/{}/{}", app.bucket_name, file.team, file.file_hash);
+
+    Mock::given(path(object_path.clone()))
+        .and(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(file.file_bytes.clone()))
+        .expect(1)
+        .mount(&app.storage_server)
+        .await;
+    Mock::given(path(object_path))
+        .and(method("HEAD"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&app.storage_server)
+        .await;
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/v8/artifacts/{}?slug={}",
+            app.address, file.file_hash, file.team
+        ))
+        .send()
+        .await
+        .expect("GET should complete");
+
+    assert_eq!(response.status(), 200);
+    assert!(response.headers().get("x-artifact-tag").is_none());
+    assert!(response.headers().get("x-artifact-duration").is_none());
+    assert_eq!(response.bytes().await.unwrap().as_ref(), file.file_bytes);
+    assert!(
+        app.storage_server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|request| request.method.as_str() == "HEAD")
+    );
+}
+
 /// Counterpart to `upload_artifact_forwards_artifact_tag_as_s3_metadata_test`.
 /// On GET, the server must return the `x-artifact-tag` header that was stored
 /// during upload so the Turborepo client can verify the artifact signature.

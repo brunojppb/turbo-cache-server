@@ -6,8 +6,38 @@ use secrecy::ExposeSecret;
 use tokio::io::AsyncRead;
 
 use crate::app_settings::{AppSettings, S3ServerSideEncryption};
+use crate::domain::{ArtifactId, ArtifactMetadata};
 
 const SSE_HEADER: http::HeaderName = http::HeaderName::from_static("x-amz-server-side-encryption");
+const ARTIFACT_TAG: &str = "x-artifact-tag";
+const ARTIFACT_DURATION: &str = "x-artifact-duration";
+
+pub type ArtifactStream = ResponseDataStream;
+
+fn object_path(id: &ArtifactId) -> String {
+    format!("/{}/{}", id.team, id.hash)
+}
+
+pub(crate) fn metadata_from_storage(mut values: HashMap<String, String>) -> ArtifactMetadata {
+    ArtifactMetadata {
+        tag: values.remove(ARTIFACT_TAG),
+        duration: values
+            .remove(ARTIFACT_DURATION)
+            .as_deref()
+            .and_then(ArtifactMetadata::parse_duration),
+    }
+}
+
+pub(crate) fn metadata_to_storage(metadata: &ArtifactMetadata) -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    if let Some(tag) = &metadata.tag {
+        values.insert(ARTIFACT_TAG.to_owned(), tag.clone());
+    }
+    if let Some(duration) = metadata.duration {
+        values.insert(ARTIFACT_DURATION.to_owned(), duration.to_string());
+    }
+    values
+}
 
 #[derive(Debug)]
 pub enum StorageError {
@@ -101,47 +131,36 @@ impl Storage {
     }
 
     /// Streams the file from the S3 bucket
-    #[tracing::instrument(name = "get S3 file")]
-    pub async fn get_file(&self, path: &str) -> Result<ResponseDataStream, StorageError> {
-        let file = self.bucket.get_object_stream(path).await?;
+    #[tracing::instrument(name = "get S3 file", skip(id))]
+    pub async fn get_file(&self, id: &ArtifactId) -> Result<ArtifactStream, StorageError> {
+        let file = self.bucket.get_object_stream(object_path(id)).await?;
         Ok(file)
     }
 
     /// Returns the user metadata stored on the S3 object, or reports that the
     /// object is missing.
-    #[tracing::instrument(name = "head S3 file")]
-    pub async fn head_file(&self, path: &str) -> Result<HashMap<String, String>, StorageError> {
-        let (head_result, _status) = self.bucket.head_object(path).await?;
-        Ok(head_result.metadata.unwrap_or_default())
-    }
-
-    /// Returns the user metadata stored on the S3 object.
-    /// A failed lookup must not fail an otherwise good download, so it reports
-    /// no metadata rather than an error.
-    #[tracing::instrument(name = "get S3 object metadata")]
-    pub async fn get_metadata(&self, path: &str) -> HashMap<String, String> {
-        match self.head_file(path).await {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                tracing::warn!(error = %error, path, "HEAD request failed, omitting object metadata");
-                HashMap::new()
-            }
-        }
+    #[tracing::instrument(name = "head S3 file", skip(id))]
+    pub async fn head_file(&self, id: &ArtifactId) -> Result<ArtifactMetadata, StorageError> {
+        let (head_result, _status) = self.bucket.head_object(object_path(id)).await?;
+        Ok(metadata_from_storage(
+            head_result.metadata.unwrap_or_default(),
+        ))
     }
 
     /// Streams the given data to the S3 bucket under the given path.
     /// Each metadata key-value pair is persisted as S3 user metadata
     /// (x-amz-meta-*) so it can be retrieved on subsequent HEADs.
-    #[tracing::instrument(name = "put S3 file stream", skip(reader))]
+    #[tracing::instrument(name = "put S3 file stream", skip(id, reader, metadata))]
     pub async fn put_file_stream<R>(
         &self,
-        path: &str,
+        id: &ArtifactId,
         reader: &mut R,
-        metadata: &HashMap<String, String>,
+        metadata: &ArtifactMetadata,
     ) -> Result<(), StorageError>
     where
         R: AsyncRead + Unpin,
     {
+        let path = object_path(id);
         let mut builder = self.bucket.put_object_stream_builder(path);
 
         if let Some(encryption) = self.server_side_encryption {
@@ -150,9 +169,9 @@ impl Storage {
                 .expect("Invalid server-side encryption header value");
         }
 
-        for (key, value) in metadata {
+        for (key, value) in metadata_to_storage(metadata) {
             builder = builder
-                .with_metadata(key, value)
+                .with_metadata(&key, &value)
                 .expect("Invalid metadata value");
         }
 
@@ -164,6 +183,54 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn object_path_keeps_team_and_hash_in_the_existing_layout() {
+        let id = ArtifactId {
+            team: "my-team".to_owned(),
+            hash: "abc123".to_owned(),
+        };
+        assert_eq!(object_path(&id), "/my-team/abc123");
+    }
+
+    /// The bucket holds the parsed number, not the bytes the client sent.
+    #[test]
+    fn writes_the_parsed_duration_to_storage() {
+        let metadata = ArtifactMetadata {
+            duration: ArtifactMetadata::parse_duration("007"),
+            ..ArtifactMetadata::default()
+        };
+
+        let stored = metadata_to_storage(&metadata);
+
+        assert_eq!(stored.get(ARTIFACT_DURATION).map(String::as_str), Some("7"));
+    }
+
+    #[test]
+    fn reads_both_artifact_headers_from_storage() {
+        let tag = "v=1:sha256:abc123";
+        let stored = HashMap::from([
+            (ARTIFACT_TAG.to_owned(), tag.to_owned()),
+            (ARTIFACT_DURATION.to_owned(), "1234".to_owned()),
+        ]);
+
+        assert_eq!(
+            metadata_from_storage(stored),
+            ArtifactMetadata {
+                tag: Some(tag.to_owned()),
+                duration: Some(1234),
+            }
+        );
+    }
+
+    /// Another writer may share the bucket, so the read path does not trust the
+    /// stored value either.
+    #[test]
+    fn drops_a_malformed_duration_from_storage() {
+        let stored = HashMap::from([(ARTIFACT_DURATION.to_owned(), "not-a-number".to_owned())]);
+
+        assert_eq!(metadata_from_storage(stored).duration, None);
+    }
 
     fn settings_with_credentials() -> AppSettings {
         AppSettings {
