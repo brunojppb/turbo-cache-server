@@ -1,22 +1,8 @@
 /// One cached artifact, scoped to a storage namespace.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactId {
-    team: String,
-    hash: String,
-}
-
-impl ArtifactId {
-    pub fn new(team: String, hash: String) -> Self {
-        Self { team, hash }
-    }
-
-    pub fn team(&self) -> &str {
-        &self.team
-    }
-
-    pub fn hash(&self) -> &str {
-        &self.hash
-    }
+    pub team: String,
+    pub hash: String,
 }
 
 /// The two optional values Turborepo associates with artifact bytes.

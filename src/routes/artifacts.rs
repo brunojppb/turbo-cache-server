@@ -131,7 +131,7 @@ pub async fn put_file(
     match cache.put(&artifact_info, &mut reader, &metadata).await {
         Ok(_) => {
             let artifact = Artifact {
-                filename: artifact_info.hash().to_owned(),
+                filename: artifact_info.hash.clone(),
             };
 
             HttpResponse::Created().json(artifact)
@@ -190,7 +190,10 @@ fn extract_team_from_req(req: &HttpRequest) -> String {
 
 fn artifact_id_from_request(req: &HttpRequest) -> Option<ArtifactId> {
     let hash = req.match_info().get("hash")?.to_owned();
-    Some(ArtifactId::new(extract_team_from_req(req), hash))
+    Some(ArtifactId {
+        team: extract_team_from_req(req),
+        hash,
+    })
 }
 
 const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
@@ -219,8 +222,8 @@ mod tests {
                 .param("hash", "abc123")
                 .to_http_request();
             let id = artifact_id_from_request(&req).unwrap();
-            assert_eq!(id.team(), "preferred");
-            assert_eq!(id.hash(), "abc123");
+            assert_eq!(id.team, "preferred");
+            assert_eq!(id.hash, "abc123");
         }
     }
 
@@ -233,11 +236,8 @@ mod tests {
             .param("hash", "abc123")
             .to_http_request();
 
-        assert_eq!(artifact_id_from_request(&team_id).unwrap().team(), "chosen");
-        assert_eq!(
-            artifact_id_from_request(&no_team).unwrap().team(),
-            "no_team"
-        );
+        assert_eq!(artifact_id_from_request(&team_id).unwrap().team, "chosen");
+        assert_eq!(artifact_id_from_request(&no_team).unwrap().team, "no_team");
     }
 
     #[test]

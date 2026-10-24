@@ -15,7 +15,7 @@ const ARTIFACT_DURATION: &str = "x-artifact-duration";
 pub type ArtifactStream = ResponseDataStream;
 
 fn object_path(id: &ArtifactId) -> String {
-    format!("/{}/{}", id.team(), id.hash())
+    format!("/{}/{}", id.team, id.hash)
 }
 
 pub(crate) fn metadata_from_storage(mut values: HashMap<String, String>) -> ArtifactMetadata {
@@ -186,7 +186,10 @@ mod tests {
 
     #[test]
     fn object_path_keeps_team_and_hash_in_the_existing_layout() {
-        let id = ArtifactId::new("my-team".to_owned(), "abc123".to_owned());
+        let id = ArtifactId {
+            team: "my-team".to_owned(),
+            hash: "abc123".to_owned(),
+        };
         assert_eq!(object_path(&id), "/my-team/abc123");
     }
 
