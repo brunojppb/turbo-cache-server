@@ -190,6 +190,45 @@ mod tests {
         assert_eq!(object_path(&id), "/my-team/abc123");
     }
 
+    /// The bucket holds the parsed number, not the bytes the client sent.
+    #[test]
+    fn writes_the_parsed_duration_to_storage() {
+        let metadata = ArtifactMetadata {
+            duration: ArtifactMetadata::parse_duration("007"),
+            ..ArtifactMetadata::default()
+        };
+
+        let stored = metadata_to_storage(&metadata);
+
+        assert_eq!(stored.get(ARTIFACT_DURATION).map(String::as_str), Some("7"));
+    }
+
+    #[test]
+    fn reads_both_artifact_headers_from_storage() {
+        let tag = "v=1:sha256:abc123";
+        let stored = HashMap::from([
+            (ARTIFACT_TAG.to_owned(), tag.to_owned()),
+            (ARTIFACT_DURATION.to_owned(), "1234".to_owned()),
+        ]);
+
+        assert_eq!(
+            metadata_from_storage(stored),
+            ArtifactMetadata {
+                tag: Some(tag.to_owned()),
+                duration: Some(1234),
+            }
+        );
+    }
+
+    /// Another writer may share the bucket, so the read path does not trust the
+    /// stored value either.
+    #[test]
+    fn drops_a_malformed_duration_from_storage() {
+        let stored = HashMap::from([(ARTIFACT_DURATION.to_owned(), "not-a-number".to_owned())]);
+
+        assert_eq!(metadata_from_storage(stored).duration, None);
+    }
+
     fn settings_with_credentials() -> AppSettings {
         AppSettings {
             host: "127.0.0.1".to_owned(),
