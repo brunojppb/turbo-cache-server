@@ -162,8 +162,14 @@ pub fn init_system_metrics(
         return None;
     }
 
+    let system = match System::new_all() {
+        Ok(system) => Arc::new(Mutex::new(system)),
+        Err(error) => {
+            tracing::warn!(%error, "System metrics disabled: cannot read process information");
+            return None;
+        }
+    };
     let meter = opentelemetry::global::meter(name);
-    let system = Arc::new(Mutex::new(System::new_all()));
     let current_pid = Pid::from_u32(std::process::id());
 
     // CPU Usage Gauge (percentage)

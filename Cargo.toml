@@ -44,7 +44,7 @@ opentelemetry-otlp = { version = "0.33.0", features = [
 opentelemetry-semantic-conventions = { version = "0.33.0", features = [
   "semconv_experimental",
 ] }
-sysinfo = "0.39"
+sysinfo = "0.40"
 tonic = "0.14.2"
 secrecy = "0.10.3"
 tracing-actix-web = "0.7"
