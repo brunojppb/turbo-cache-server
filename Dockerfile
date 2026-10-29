@@ -35,6 +35,16 @@ RUN cargo zigbuild -r \
 
 FROM ghcr.io/rust-cross/cargo-zigbuild AS macos-builder
 ARG RUST_VERSION
+# The image ships the macOS 11.3 SDK, which lacks IOKit symbols that sysinfo needs (macOS 12+).
+ARG MACOS_SDK_VERSION=15.5
+ARG MACOS_SDK_SHA256=c15cf0f3f17d714d1aa5a642da8e118db53d79429eb015771ba816aa7c6c1cbd
+RUN curl -fsSL -o /tmp/sdk.tar.xz \
+  "https://github.com/joseluisq/macosx-sdks/releases/download/${MACOS_SDK_VERSION}/MacOSX${MACOS_SDK_VERSION}.sdk.tar.xz" && \
+  echo "${MACOS_SDK_SHA256}  /tmp/sdk.tar.xz" | sha256sum -c - && \
+  tar -xJf /tmp/sdk.tar.xz -C /opt && \
+  rm /tmp/sdk.tar.xz && \
+  test -d "/opt/MacOSX${MACOS_SDK_VERSION}.sdk"
+ENV SDKROOT=/opt/MacOSX${MACOS_SDK_VERSION}.sdk
 WORKDIR /app
 RUN rustup toolchain install ${RUST_VERSION} && rustup default ${RUST_VERSION} && \
   rustup target add x86_64-apple-darwin aarch64-apple-darwin
