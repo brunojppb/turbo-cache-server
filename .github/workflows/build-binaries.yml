@@ -92,7 +92,7 @@ jobs:
 
   build-macos:
     name: Build macOS (Apple Silicon)
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: read
     steps:
