@@ -2,7 +2,7 @@
 
 ## Baseline and target architecture
 
-The latest release run shared for this analysis took about 24 minutes overall: the Linux compilation step took 10m19s, the macOS compilation step took 7m04s, and the separate final Docker build took 11m59s. Those are the observed baseline numbers; the native runner and cache changes below have not yet been measured, so no speedup is claimed. [Baseline release run](https://github.com/brunojppb/turbo-cache-server/actions/runs/40304310062)
+The latest release run shared for this analysis took about 24 minutes overall: the Linux compilation step took 10m19s, the macOS compilation step took 7m04s, and the separate final Docker build took 11m59s. Those are the observed release baseline numbers. The local validation and hosted PR job timings below measure the new builds; a complete release run after merge is still needed to measure end-to-end release speedup. [Baseline release run](https://github.com/brunojppb/turbo-cache-server/actions/runs/40304310062)
 
 The selected architecture removes the second Rust compilation and separates compilation from runtime-image assembly:
 
@@ -50,7 +50,7 @@ The artifact flow keeps three identities aligned: `decay-x64` and `decay-arm64` 
 ## Risks and follow-up measurements
 
 - GitHub currently documents standard Linux ARM64 hosted runners as public preview. Confirm availability and action compatibility for the organization. If that runner becomes unavailable, the same native job can use another ARM64 runner; avoid silently falling back to QEMU compilation because Docker warns that emulated compilation can be much slower.
-- Standard GitHub-hosted macOS runners have fewer CPUs and memory than some larger runners. This changes the toolchain path and enables caching, but the macOS job's measured runtime after the change is unknown.
+- Standard GitHub-hosted macOS runners have fewer CPUs and memory than some larger runners. The first hosted PR macOS job completed in 4m33s; main-branch cache warming and a subsequent release are still needed to measure release cache reuse.
 - GitHub Actions cache entries can be evicted and are limited by the repository/org cache policy. Review cache hit/miss output and cache size after a few main-branch runs; compare total runtime, not only compile time, because exporting/restoring `mode=max` has a transfer cost.
 - The versioned Docker image and downloadable Linux release binaries now originate from the same exported build artifacts. The smoke test checks this for each build before artifacts are uploaded; keep it attached to the artifact-producing job.
 
@@ -68,12 +68,32 @@ The artifact flow keeps three identities aligned: `decay-x64` and `decay-arm64` 
 
 ## Verification performed for this change
 
-- Required Rust checks: formatting and Clippy passed; `cargo test --all-features --locked` passed (38 unit, 1 settings, 29 HTTP tests).
-- Workflow validation: actionlint 1.7.12 passed. Six Node architecture-selection tests and two Python version-staging tests passed. Invalid Docker-tag versions (including SemVer `+metadata` and tags longer than 128 characters) are rejected before compilation.
-- Built the new Docker `artifact` target for native Linux ARM64 with Rust 1.99.1. `file` reports a statically linked AArch64 ELF executable. A second build with a different release version reused the Cargo Chef cook layer (`CACHED`) and rebuilt only the application.
-- Built `aarch64-apple-darwin` in release mode locally; `lipo -archs` reports only `arm64`.
-- Assembled the ARM64 runtime from the newly built artifact; health, CA bundle presence, and executable byte equality checks passed.
-- Built both runtime filesystem variants with Buildx using the separate artifact context and the root `Dockerfile.release`; both executable byte comparisons and CA bundle checks passed. AMD64 packaging used the existing committed AMD64 binary as a fixture, not a newly compiled AMD64 release.
-- Independent review identified Docker-tag-incompatible SemVer input, now covered by regression tests. A reported Dockerfile path issue was checked against build-push-action's argument construction and an actual multi-platform build: `file` is passed to `--file` from the workspace, so the root Dockerfile works with a separate context.
+Required Rust formatting, Clippy and all-feature tests passed (38 unit, 1 settings, 29 HTTP tests). actionlint 1.7.12, six Node architecture-selection tests and two Python version-staging tests passed. Independent review identified Docker-tag-incompatible SemVer input, now covered by regression tests. The separate build context and root Dockerfile path were verified against build-push-action's argument construction and actual builds.
 
-Hosted AMD64 compilation, GitHub cache upload/restore, and registry publication have not been exercised locally. Publishing a release or changing existing image tags was intentionally outside PR validation. Confirm cache hits, native runner compatibility, and end-to-end timings in Actions after this branch is pushed and after the first main-branch cache-warming run.
+All hosted checks passed on [the first PR build](https://github.com/brunojppb/turbo-cache-server/actions/runs/41037876398): Linux AMD64 8m05s, Linux ARM64 7m21s, and macOS ARM64 4m33s, in parallel. This confirms native runner availability and successful GitHub cache export. It does not yet prove a warm release cache restore from main.
+
+### Full local build validation
+
+Tested commit `b988b88` on an Apple Silicon Mac, with an ARM64 Docker VM exposing 18 CPUs and about 32 GiB RAM. The initial three builds ran concurrently, so these are validation timings under contention rather than controlled hardware benchmarks. AMD64 Linux ran under emulation; the corresponding CI job runs natively.
+
+The source snapshot used package version `0.0.0-local.1`. Both Linux architectures compiled from an empty, dedicated BuildKit builder, with no cache import, and exported `mode=max` caches. macOS used a fresh Cargo target directory, retaining the host's downloaded Cargo registry. A second dedicated BuildKit builder imported the exported caches, then built a source edit and version `0.0.0-local.2`. Both Cargo Chef cook layers were `CACHED`; only the application was compiled. The changed macOS build also compiled only the application.
+
+| Target | Cold build | Source + version change | Unchanged rebuild |
+| --- | ---: | ---: | ---: |
+| Linux ARM64, native | 245.58s | 66.54s | 6.06s |
+| Linux AMD64, emulated | 358.41s | 78.48s | 0.76s |
+| macOS ARM64, native | 69.30s | 61.56s | 0.26s |
+
+Cold Linux timings include tool installation and cache export; changed-build timings include cache restore and application compilation, without another cache export. The ARM64 and AMD64 exported caches occupied approximately 699 MiB and 705 MiB respectively. Local cache storage verifies intermediate-layer export/import across fresh builders, but does not model GitHub cache network latency or eviction. The remaining optimized application build/link is still a noticeable cost, even when dependency caching works.
+
+Runtime and packaging checks all passed:
+
+- Newly compiled Linux binaries have the expected ELF architecture and static linkage; the macOS executable contains only ARM64.
+- Both newly built Linux runtime images passed HTTP health checks, CA certificate presence and byte-for-byte executable comparison. Input binaries were deliberately changed to mode 0644 before packaging to verify that `COPY --chmod=755` restores executable permissions.
+- The native macOS executable passed an HTTP health check for both the initial build and the changed-version build.
+- A complete two-platform OCI image archive was produced locally without a registry push. Both platform manifests, blob digests, executable bytes and mode, CA certificates, embedded release version, `HOST`, working directory and command were checked.
+- Runtime assembly took 2.41s for ARM64 and 1.85s for AMD64; creating the multi-platform OCI archive took 1.33s with certificate layers already cached. No Rust compilation occurred during packaging.
+- The standalone source-build Docker runtime target completed in 1.44s with its previously built artifact cached and passed the same health and byte-identity checks.
+- Changed binaries contain `0.0.0-local.2`; unchanged Linux rebuilds preserve executable bytes.
+
+The local artifacts, scripts and full logs are retained at `/tmp/decay-build-validation.23hySN` on the validation machine. Temporary builders were removed. No release or registry image was published. End-to-end release publication and warm GitHub cache restoration from main remain to be confirmed after merge.
