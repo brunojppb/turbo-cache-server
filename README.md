@@ -39,14 +39,14 @@ The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS Apple 
 
     ````yml
         - name: Checkout repository
-          uses: actions/checkout@v4
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
         - name: Turborepo Cache Server
-          # ALWAYS use a pinned version of the action
+          # Pin the action to a release commit SHA; keep its version in the comment.
           # As we don't ship the latest versions of the binary on the main branch
           # PLEASE see the latest versions here:
           # https://github.com/brunojppb/turbo-cache-server/releases
-          uses: brunojppb/turbo-cache-server@4.0.3
+          uses: brunojppb/turbo-cache-server@2b77989368f018dcd51ecfa31712f9b2d8a1aed6 # 4.0.21
           env:
             PORT: "8585"
             S3_BUCKET_NAME: your-bucket-name-here
