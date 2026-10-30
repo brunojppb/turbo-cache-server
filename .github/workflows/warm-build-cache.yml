@@ -1,0 +1,15 @@
+name: Warm build caches
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: warm-build-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-binaries.yml

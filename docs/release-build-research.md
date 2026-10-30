@@ -9,7 +9,7 @@ The selected architecture removes the second Rust compilation and separates comp
 ```text
 Linux native matrix (amd64 + arm64, in parallel)
   ├─ Dockerfile artifact target: compile one static executable for that runner's native architecture
-  ├─ GitHub Actions cache: separate linux-amd64 / linux-arm64 scopes, mode=max
+  ├─ GHCR registry cache: separate buildcache-amd64 / buildcache-arm64 tags, mode=max
   ├─ export the executable directly as a workflow artifact
   └─ smoke-check the artifact in the matching runtime image
 
@@ -25,15 +25,17 @@ Release publish
 
 The Linux builds now run natively on `ubuntu-24.04` and `ubuntu-24.04-arm`. That removes the Linux cross-compilation toolchain (`zig`/`cargo-zigbuild`) from the Rust Docker builder and lets the two architectures compile concurrently. The job exports its binary using BuildKit's local output and does not push a temporary build image. `Dockerfile.release` then copies those exact artifacts into a scratch runtime image, so the image published to GHCR contains the same Linux executable bytes attached to the GitHub release. The macOS build uses the native Apple Silicon `aarch64-apple-darwin` target and Rust dependency caching.
 
-This is the chosen design over the initial manifest-promotion recommendation. Promoting a compiled image manifest from the existing Docker Hub build repository would avoid a second compile, but it would keep an intermediate registry image and require Docker Hub credentials and publication in the release path. Direct artifact export removes that registry dependency and the associated secret while preserving one compile per architecture. Native Linux matrix jobs also make the independent architecture builds explicit and parallel. Both paths can eliminate duplicate Rust compilation; the artifact approach better fits the desired release inputs and avoids trusting a second registry as the handoff. The native builds are a design choice, not a measured performance claim.
+This is the chosen design over the initial manifest-promotion recommendation. Promoting a compiled image manifest from the existing Docker Hub build repository would avoid a second compile, but it would keep an intermediate registry image and require Docker Hub credentials and publication in the release path. Direct artifact export removes the intermediate Docker Hub image dependency and its credential while preserving one compile per architecture. GHCR is used separately as an optional dependency cache; cache misses remain valid builds. Native Linux matrix jobs also make the independent architecture builds explicit and parallel. Both paths can eliminate duplicate Rust compilation; the artifact approach better fits the desired release inputs and avoids trusting a second registry as the handoff. The native builds are a design choice, not a measured performance claim.
 
 ## Cache configuration and alternatives
 
-The Linux jobs use BuildKit's GitHub Actions cache backend, with stable architecture-specific scopes (`linux-amd64`, `linux-arm64`) and `mode=max`. Separate scopes prevent one architecture from replacing the other's cache. Pushes from `main` warm reusable caches; pull-request builds can restore caches allowed from the base/default branch, while GitHub's cache access rules still limit visibility across unrelated branches. GitHub documents `gha` cache scope as the identity for cache objects and documents that each scope can be overwritten by later exports, so the per-architecture scope is intentional.
+The Linux jobs export BuildKit registry caches to the existing public GHCR package, under `buildcache-amd64` and `buildcache-arm64`. The same ref is used for import and export, with `mode=max` to retain intermediate Cargo Chef dependency layers. Separate tags keep architecture caches independent. Cache data is separate from the deployable version and `latest` tags. Unlike GitHub Actions caches, registry tags are not subject to the seven-day inactivity eviction; keep these tags excluded from any package cleanup policy. Docker documents registry cache support for intermediate stages and non-image exporters such as the binary artifact target. [Registry cache](https://docs.docker.com/build/cache/backends/registry/), [GitHub cache retention](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#usage-limits-and-eviction-policy)
 
-`mode=max` includes intermediate build stages such as Cargo Chef's dependency cook layer. The backend is convenient for GitHub-hosted runners and avoids maintaining a registry cache repository or credentials. Its tradeoffs are GitHub cache quotas/eviction and API rate limits; Docker notes that frequent `gha` lookups can be rate limited. If cache size or rate limits become material, a registry cache is a valid alternative: export and import the same dedicated cache ref, set `mode=max`, and serialize writes or allocate refs by branch/architecture to avoid overwriting concurrent caches. The current selected workflow does not use a registry cache.
+Only trusted `push` and `workflow_dispatch` builds on `main` authenticate and export the caches, using `GITHUB_TOKEN` with `packages: write`. The PR caller grants only `packages: read`; the main-branch cache-warming workflow and release caller grant `packages: write`. The reusable Linux job inherits these permissions, while the macOS job narrows its permissions to repository reads. Cache export depends on the guarded login step succeeding. PR builds restore anonymously from the existing public package and never export or receive registry credentials. Using tags in the existing public runtime package avoids a newly created private package that fork PRs could not read. Cache-writing jobs on the same ref are serialized per architecture, including main and release builds. A missing cache remains a valid cold build. [GHCR authentication and public pulls](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 
-`Swatinem/rust-cache` applies to the macOS job because that job invokes Cargo directly on the GitHub runner. Its cache includes Cargo registry/git data and dependency build artifacts, and keys include the Rust compiler/host plus Cargo manifests, lockfile, toolchain, config, and selected environment. It does not automatically cache Cargo state inside a BuildKit container. Conversely, the Linux Docker build uses BuildKit's `gha` cache for Docker layers, which already includes Cargo Chef's dependency layer; adding rust-cache there would not share the runner's cache with the container build.
+The earlier PR revision used GitHub Actions' `gha` backend. Although it avoids registry authentication, GitHub removes cache entries after seven days without access. The user's three-week idle-release scenario therefore requires a registry cache. The GHCR caches keep the dependency layers available between idle releases, provided that registry cleanup does not remove them. Toolchain, manifest, dependency or build-flag changes can still cause legitimate misses.
+
+`Swatinem/rust-cache` remains on the native macOS job, which invokes Cargo directly rather than inside Docker. It caches downloaded crates and compiled dependencies with compiler/host and project configuration in the key. It still uses GitHub Actions storage and can expire after seven days without access. This change moves Linux Docker layers to GHCR; it does not make native macOS Cargo cache retention durable. [rust-cache](https://github.com/Swatinem/rust-cache)
 
 ## Cargo Chef and version handling
 
@@ -51,7 +53,7 @@ The artifact flow keeps three identities aligned: `decay-x64` and `decay-arm64` 
 
 - GitHub currently documents standard Linux ARM64 hosted runners as public preview. Confirm availability and action compatibility for the organization. If that runner becomes unavailable, the same native job can use another ARM64 runner; avoid silently falling back to QEMU compilation because Docker warns that emulated compilation can be much slower.
 - Standard GitHub-hosted macOS runners have fewer CPUs and memory than some larger runners. The first hosted PR macOS job completed in 4m33s; main-branch cache warming and a subsequent release are still needed to measure release cache reuse.
-- GitHub Actions cache entries can be evicted and are limited by the repository/org cache policy. Review cache hit/miss output and cache size after a few main-branch runs; compare total runtime, not only compile time, because exporting/restoring `mode=max` has a transfer cost.
+- Keep the GHCR buildcache tags excluded from cleanup policies. `mode=max` export/restore has a transfer cost; compare total runtime and cache hit output over subsequent releases. The native macOS Cargo cache still has GitHub Actions retention limits.
 - The versioned Docker image and downloadable Linux release binaries now originate from the same exported build artifacts. The smoke test checks this for each build before artifacts are uploaded; keep it attached to the artifact-producing job.
 
 ## Primary sources
@@ -70,7 +72,7 @@ The artifact flow keeps three identities aligned: `decay-x64` and `decay-arm64` 
 
 Required Rust formatting, Clippy and all-feature tests passed (38 unit, 1 settings, 29 HTTP tests). actionlint 1.7.12, six Node architecture-selection tests and two Python version-staging tests passed. Independent review identified Docker-tag-incompatible SemVer input, now covered by regression tests. The separate build context and root Dockerfile path were verified against build-push-action's argument construction and actual builds.
 
-All hosted checks passed on [the first PR build](https://github.com/brunojppb/turbo-cache-server/actions/runs/41037876398): Linux AMD64 8m05s, Linux ARM64 7m21s, and macOS ARM64 4m33s, in parallel. This confirms native runner availability and successful GitHub cache export. It does not yet prove a warm release cache restore from main.
+All hosted checks passed on [the first PR build](https://github.com/brunojppb/turbo-cache-server/actions/runs/41037876398): Linux AMD64 8m05s, Linux ARM64 7m21s, and macOS ARM64 4m33s, in parallel. This validated native runner availability and the earlier GitHub cache export configuration. The GHCR cache revision needs separate validation below.
 
 ### Full local build validation
 
@@ -96,4 +98,13 @@ Runtime and packaging checks all passed:
 - The standalone source-build Docker runtime target completed in 1.44s with its previously built artifact cached and passed the same health and byte-identity checks.
 - Changed binaries contain `0.0.0-local.2`; unchanged Linux rebuilds preserve executable bytes.
 
-The local artifacts, scripts and full logs are retained at `/tmp/decay-build-validation.23hySN` on the validation machine. Temporary builders were removed. No release or registry image was published. End-to-end release publication and warm GitHub cache restoration from main remain to be confirmed after merge.
+The local artifacts, scripts and full logs are retained at `/tmp/decay-build-validation.23hySN` on the validation machine. Temporary builders were removed. No release or registry image was published. End-to-end release publication and warm GHCR cache restoration from main remain to be confirmed after merge.
+
+
+### GHCR cache revision verification
+
+The revised workflows passed actionlint 1.7.12 and independent review of caller/reusable token permissions, trusted writer conditions, architecture refs and writer serialization. Required formatting, Clippy and all-feature Rust tests passed again, along with the Node and Python packaging contract tests.
+
+Both architecture caches were exported with `type=registry,mode=max` to separate tags in an isolated local OCI registry. A second fresh BuildKit builder imported only those registry refs, restored Cargo Chef's intermediate dependency layers (`CACHED`), performed no Rust compilation and reproduced the original executable bytes for both AMD64 and ARM64. The test registry and builders were removed; logs and restored executables remain at `/tmp/decay-registry-validation.qd8XPt` on the validation machine.
+
+An anonymous token/manifest request to the existing public GHCR package returned HTTP 200. Live GHCR writes were not attempted because the local CLI credential lacks package scope. The first trusted main-branch warming run after merge will authenticate with the workflow's `GITHUB_TOKEN` and populate the two persistent cache tags; PR validation intentionally has read-only registry access. GHCR upload and subsequent hosted restoration still need confirmation through that trusted path. No runtime image tag or release was changed by this cache revision.

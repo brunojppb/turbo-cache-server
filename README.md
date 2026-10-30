@@ -661,11 +661,22 @@ Cross-platform source builds need a matching native builder or QEMU; release CI
 uses native runners. `Dockerfile.release` is for packaging an already-built
 `linux/amd64/decay` and `linux/arm64/decay` context, without compilation.
 
-Linux builds export Cargo Chef's intermediate dependency layers with separate
-BuildKit GitHub cache scopes for each architecture. Pushes to `main` warm these
-caches for releases. PR builds need no Docker Hub credentials and cannot replace
-the default branch's caches. macOS caches Cargo dependencies separately. Cache
-misses remain valid builds; the first run after this change will be cold.
+Linux builds store Cargo Chef's intermediate dependency layers in GHCR under
+`ghcr.io/brunojppb/turbo-cache-server:buildcache-amd64` and `:buildcache-arm64`,
+using BuildKit's registry cache with `mode=max`. These cache tags remain available
+between releases weeks apart, unless explicitly deleted or removed by a cleanup
+policy. Keep them excluded from registry cleanup rules. Changing dependencies,
+build flags or the Rust toolchain can invalidate cached layers.
+
+Trusted pushes to `main` and releases update the cache using `GITHUB_TOKEN` with
+`packages: write`. PR builds restore anonymously from the existing public GHCR
+package and never publish caches; fork PRs need no registry credentials. Writes
+are serialized per architecture on the same branch. A missing cache causes a
+normal cold build, and the first trusted run populates the cache tags.
+
+macOS still uses a separate GitHub Actions Cargo cache; it is subject to GitHub's
+seven-day inactivity eviction and may rebuild dependencies after several idle
+weeks. GHCR layer caching applies to the Linux Docker builds.
 
 Release images keep `ghcr.io/brunojppb/turbo-cache-server:<version>` and `:latest`.
 The macOS download is now `decay-aarch64-apple-darwin`, and the Action bundles

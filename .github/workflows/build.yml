@@ -1,14 +1,15 @@
 name: Build binary
 on:
   pull_request:
-  push:
-    branches: [main]
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: read
     uses: ./.github/workflows/build-binaries.yml
 
   collect:
