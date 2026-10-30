@@ -1,0 +1,12 @@
+# Runtime assembly only. Context: linux/{amd64,arm64}/decay from this run's artifacts.
+# Build the certificate stage on the host; no target emulation is needed.
+FROM --platform=$BUILDPLATFORM alpine:3.24.3 AS certificates
+RUN apk add --no-cache ca-certificates
+
+FROM scratch
+WORKDIR /app
+ARG TARGETARCH
+COPY --chmod=755 linux/${TARGETARCH}/decay /usr/bin/decay
+COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+ENV HOST="0.0.0.0"
+CMD ["/usr/bin/decay"]

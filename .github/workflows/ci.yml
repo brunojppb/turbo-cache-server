@@ -6,6 +6,13 @@ on:
   pull_request:
 
 jobs:
+  packaging-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: node --test action/util.test.mjs
+      - run: python3 .github/scripts/test-set-version.py
+
   lint:
     name: lint
     runs-on: ubuntu-latest

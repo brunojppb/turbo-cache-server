@@ -19,7 +19,7 @@ with:
 - [Cloudflare R2](https://www.cloudflare.com/en-gb/developer-platform/r2/)
 - [RustFS](https://github.com/rustfs/rustfs)
 
-The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS** (`x64` and `arm64` via a universal binary) runners. Here is how to use it:
+The GitHub Action supports both **Linux** (`x64` and `arm64`) and **macOS Apple Silicon** (`arm64` only; Intel macOS is no longer supported) runners. Here is how to use it:
 
 1.  In your workflow files, add the following global environment variables:
 
@@ -638,3 +638,39 @@ your user. Just run the following command to fix it:
 ```shell
 ulimit -n 1024
 ```
+
+
+## Building and releasing
+
+Release builds compile three executables in parallel: static Linux AMD64 and ARM64
+on native Linux runners, and macOS ARM64 on an Apple Silicon runner. The Linux
+executables are reused for both GitHub downloads and the GHCR images; image
+publication only adds the executable and CA certificates to `scratch`.
+
+`Dockerfile` remains a standalone source build. For example:
+
+```sh
+docker build -t decay .
+# Export just the executable for the Docker builder's native architecture:
+docker buildx build --target artifact --output type=local,dest=out .
+```
+
+CI reads the Rust version from `rust-toolchain.toml`; keep the standalone
+`RUST_VERSION` default in `Dockerfile` aligned when updating the toolchain.
+Cross-platform source builds need a matching native builder or QEMU; release CI
+uses native runners. `Dockerfile.release` is for packaging an already-built
+`linux/amd64/decay` and `linux/arm64/decay` context, without compilation.
+
+Linux builds export Cargo Chef's intermediate dependency layers with separate
+BuildKit GitHub cache scopes for each architecture. Pushes to `main` warm these
+caches for releases. PR builds need no Docker Hub credentials and cannot replace
+the default branch's caches. macOS caches Cargo dependencies separately. Cache
+misses remain valid builds; the first run after this change will be cold.
+
+Release images keep `ghcr.io/brunojppb/turbo-cache-server:<version>` and `:latest`.
+The macOS download is now `decay-aarch64-apple-darwin`, and the Action bundles
+`decay-darwin-arm64`. Intel macOS and the universal download are discontinued;
+older release tags remain available for Intel users.
+
+See [the release build analysis](docs/release-build-research.md) for measured
+baseline timings, architecture alternatives, caching details, and sources.
