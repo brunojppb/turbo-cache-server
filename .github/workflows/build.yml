@@ -2,14 +2,15 @@ name: Build binary
 on:
   pull_request:
 concurrency:
-  group: ${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: read
     uses: ./.github/workflows/build-binaries.yml
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
   collect:
     name: Collect binaries

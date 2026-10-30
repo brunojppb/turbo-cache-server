@@ -8,16 +8,23 @@ on:
         required: true
 
 concurrency:
-  group: ${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions: "write-all"
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   sanity-check:
     name: Branch sanity check
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+      - name: Validate release version
+        env:
+          RELEASE_VERSION: ${{ inputs.semver }}
+        run: python3 .github/scripts/set-version.py "$RELEASE_VERSION"
       - name: Verify main branch
         if: github.ref != 'refs/heads/main'
         run: |
@@ -26,12 +33,12 @@ jobs:
 
   build:
     needs: [sanity-check]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-binaries.yml
     with:
       version: ${{ github.event.inputs.semver }}
-      cache-ref: "release-cache"
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
 
   release:
     name: Release Turbo Cache Server
@@ -44,9 +51,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Update version on Cargo.toml
-        run: |
-          sed -i "s/^version = \".*\"/version = \"${{ github.event.inputs.semver }}\"/" Cargo.toml
+      - name: Stage release version
+        env:
+          RELEASE_VERSION: ${{ inputs.semver }}
+        run: python3 .github/scripts/set-version.py "$RELEASE_VERSION"
 
       - name: Download all binaries
         uses: actions/download-artifact@v8
@@ -59,16 +67,10 @@ jobs:
         run: |
           chmod +x action/decay-arm64
           chmod +x action/decay-x64
-          chmod +x action/decay-darwin-universal
+          chmod +x action/decay-darwin-arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.4.1
-
-      - name: login to Docker
-        uses: docker/login-action@v4
-        with:
-          username: brunojppb
-          password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: login to Github Container registry
         uses: docker/login-action@v4
@@ -77,16 +79,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Read Rust version from rust-toolchain.toml
-        id: rust
-        run: echo "version=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Docker image
-        env:
-          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
-          RUST_VERSION: ${{ steps.rust.outputs.version }}
+      - name: Stage Linux image context
         run: |
-          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --platform linux/arm64,linux/amd64 --tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
+          mkdir -p release-image/linux/{amd64,arm64}
+          cp action/decay-x64 release-image/linux/amd64/decay
+          cp action/decay-arm64 release-image/linux/arm64/decay
+
+      - name: Package and push Docker image (no compilation)
+        uses: docker/build-push-action@v7
+        with:
+          context: release-image
+          file: Dockerfile.release
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: |
+            ghcr.io/brunojppb/turbo-cache-server:${{ inputs.semver }}
+            ghcr.io/brunojppb/turbo-cache-server:latest
 
       - name: Commit new binary
         env:
@@ -96,21 +104,23 @@ jobs:
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git add action/decay-arm64
           git add action/decay-x64
-          git add action/decay-darwin-universal
+          git add action/decay-darwin-arm64 Cargo.toml Cargo.lock
+          # Older release tags may contain the universal executable.
+          git rm --ignore-unmatch action/decay-darwin-universal
           git commit -am "Release ${CACHE_SERVER_VERSION}"
-          git tag -a ${CACHE_SERVER_VERSION} -m "Release ${CACHE_SERVER_VERSION}"
+          git tag -a "${CACHE_SERVER_VERSION}" -m "Release ${CACHE_SERVER_VERSION}"
 
       - name: Push new tag
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
-        run: git push origin $CACHE_SERVER_VERSION
+        run: git push origin "${CACHE_SERVER_VERSION}"
 
       - name: Stage release binaries
         run: |
           mkdir -p release-assets
           cp action/decay-x64 release-assets/decay-x86_64-unknown-linux-musl
           cp action/decay-arm64 release-assets/decay-aarch64-unknown-linux-musl
-          cp action/decay-darwin-universal release-assets/decay-universal-apple-darwin
+          cp action/decay-darwin-arm64 release-assets/decay-aarch64-apple-darwin
           chmod +x release-assets/*
           cd release-assets && sha256sum decay-* > SHA256SUMS
 
@@ -149,7 +159,7 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${CACHE_SERVER_VERSION}"
           echo "| Linux (musl) | x86-64 | [decay-x86_64-unknown-linux-musl](${DOWNLOAD_URL}/decay-x86_64-unknown-linux-musl) |" >> "$NOTES_FILE"
           echo "| Linux (musl) | ARM64 | [decay-aarch64-unknown-linux-musl](${DOWNLOAD_URL}/decay-aarch64-unknown-linux-musl) |" >> "$NOTES_FILE"
-          echo "| macOS (universal) | Intel + Apple Silicon | [decay-universal-apple-darwin](${DOWNLOAD_URL}/decay-universal-apple-darwin) |" >> "$NOTES_FILE"
+          echo "| macOS | Apple Silicon (ARM64) | [decay-aarch64-apple-darwin](${DOWNLOAD_URL}/decay-aarch64-apple-darwin) |" >> "$NOTES_FILE"
           echo "" >> "$NOTES_FILE"
           echo "Verify a download against \`SHA256SUMS\`, e.g. \`sha256sum -c SHA256SUMS --ignore-missing\`." >> "$NOTES_FILE"
 
@@ -158,7 +168,7 @@ jobs:
             --notes-file "$NOTES_FILE" \
             release-assets/decay-x86_64-unknown-linux-musl \
             release-assets/decay-aarch64-unknown-linux-musl \
-            release-assets/decay-universal-apple-darwin \
+            release-assets/decay-aarch64-apple-darwin \
             release-assets/SHA256SUMS
 
           rm -f "$NOTES_FILE"

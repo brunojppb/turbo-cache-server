@@ -6,22 +6,23 @@ const supportedArches = ["arm64", "x64"];
 
 /**
  * Get the binary name from the current OS platform and architecture.
- * Supports Linux (arm64, x64) and macOS (universal2).
+ * Supports Linux (arm64, x64) and macOS (Apple Silicon).
  */
-export function getBinaryName() {
-  const platform = os.platform();
-
+export function getBinaryName(platform = os.platform(), arch = os.arch()) {
   if (platform === "darwin") {
-    return "decay-darwin-universal";
+    if (arch !== "arm64") {
+      throw new Error(`This action does not support macOS arch='${arch}'; use an Apple Silicon runner`);
+    }
+    return "decay-darwin-arm64";
   }
 
   if (platform === "linux") {
-    if (!supportedArches.includes(os.arch())) {
+    if (!supportedArches.includes(arch)) {
       throw new Error(
-        `This action does not support Linux arch='${os.arch()}'`,
+        `This action does not support Linux arch='${arch}'`,
       );
     }
-    return `decay-${os.arch()}`;
+    return `decay-${arch}`;
   }
 
   throw new Error(`This action does not support platform='${platform}'`);
