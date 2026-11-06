@@ -1,6 +1,6 @@
 # Runtime assembly only. Context: linux/{amd64,arm64}/decay from this run's artifacts.
 # Build the certificate stage on the host; no target emulation is needed.
-FROM --platform=$BUILDPLATFORM alpine:3.24.3 AS certificates
+FROM --platform=$BUILDPLATFORM alpine:3.24.4 AS certificates
 RUN apk add --no-cache ca-certificates
 
 FROM scratch
