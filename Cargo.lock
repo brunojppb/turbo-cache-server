@@ -734,6 +734,7 @@ dependencies = [
  "tracing-log 0.2.0",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
  "wiremock",
 ]
 

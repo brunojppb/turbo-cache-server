@@ -53,6 +53,7 @@ subtle = "2"
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 reqwest = "0.13"
+url = "2"
 wiremock = "0.6"
 
 
