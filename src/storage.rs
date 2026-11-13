@@ -1,6 +1,8 @@
 use std::collections::HashMap;
-use std::fmt;
+use std::time::Duration;
+use std::{fmt, io};
 
+use futures::{Stream, StreamExt, stream};
 use s3::{Bucket, Region, creds::Credentials, error::S3Error, request::ResponseDataStream};
 use secrecy::ExposeSecret;
 use tokio::io::AsyncRead;
@@ -13,6 +15,46 @@ const ARTIFACT_TAG: &str = "x-artifact-tag";
 const ARTIFACT_DURATION: &str = "x-artifact-duration";
 
 pub type ArtifactStream = ResponseDataStream;
+
+/// Time limits for requests to the bucket.
+#[derive(Clone, Copy, Debug)]
+struct S3Timeouts {
+    /// Limit for a whole request with a short body: HEAD, and each PUT part.
+    request: Duration,
+    /// Limit for each wait during a download: for the response, then for each chunk.
+    stream_idle: Duration,
+}
+
+impl Default for S3Timeouts {
+    fn default() -> Self {
+        Self {
+            request: Duration::from_secs(60),
+            stream_idle: Duration::from_secs(60),
+        }
+    }
+}
+
+fn timed_out() -> S3Error {
+    S3Error::Io(io::Error::new(
+        io::ErrorKind::TimedOut,
+        "S3 sent no data within the time limit",
+    ))
+}
+
+/// Ends the stream with an error when the next chunk takes longer than `idle`.
+fn with_idle_timeout<S, T>(inner: S, idle: Duration) -> impl Stream<Item = Result<T, S3Error>>
+where
+    S: Stream<Item = Result<T, S3Error>> + Unpin,
+{
+    stream::unfold(Some(inner), move |state| async move {
+        let mut inner = state?;
+        match tokio::time::timeout(idle, inner.next()).await {
+            Ok(Some(item)) => Some((item, Some(inner))),
+            Ok(None) => None,
+            Err(_) => Some((Err(timed_out()), None)),
+        }
+    })
+}
 
 fn object_path(id: &ArtifactId) -> String {
     format!("/{}/{}", id.team, id.hash)
@@ -76,6 +118,10 @@ impl From<S3Error> for StorageError {
 
 pub struct Storage {
     bucket: Box<Bucket>,
+    /// The same bucket without a total time limit, because a large download
+    /// can take longer than any fixed limit. `timeouts.stream_idle` guards it.
+    stream_bucket: Box<Bucket>,
+    timeouts: S3Timeouts,
     server_side_encryption: Option<S3ServerSideEncryption>,
 }
 
@@ -84,6 +130,7 @@ impl fmt::Debug for Storage {
         f.debug_struct("Storage")
             .field("bucket_name", &self.bucket.name)
             .field("region", &self.bucket.region)
+            .field("timeouts", &self.timeouts)
             .field("server_side_encryption", &self.server_side_encryption)
             .finish_non_exhaustive()
     }
@@ -91,6 +138,10 @@ impl fmt::Debug for Storage {
 
 impl Storage {
     pub fn new(settings: &AppSettings) -> Self {
+        Self::with_timeouts(settings, S3Timeouts::default())
+    }
+
+    fn with_timeouts(settings: &AppSettings, timeouts: S3Timeouts) -> Self {
         let region = match &settings.s3_endpoint {
             Some(endpoint) => Region::Custom {
                 endpoint: endpoint.clone(),
@@ -123,9 +174,15 @@ impl Storage {
         if settings.s3_use_path_style {
             bucket.set_path_style()
         }
+        bucket.set_request_timeout(Some(timeouts.request));
+
+        let mut stream_bucket = bucket.clone();
+        stream_bucket.set_request_timeout(None);
 
         Self {
             bucket,
+            stream_bucket,
+            timeouts,
             server_side_encryption: settings.s3_server_side_encryption,
         }
     }
@@ -133,7 +190,12 @@ impl Storage {
     /// Streams the file from the S3 bucket
     #[tracing::instrument(name = "get S3 file", skip(id))]
     pub async fn get_file(&self, id: &ArtifactId) -> Result<ArtifactStream, StorageError> {
-        let file = self.bucket.get_object_stream(object_path(id)).await?;
+        let idle = self.timeouts.stream_idle;
+        let mut file =
+            tokio::time::timeout(idle, self.stream_bucket.get_object_stream(object_path(id)))
+                .await
+                .map_err(|_| StorageError::Unreachable(timed_out()))??;
+        file.bytes = Box::pin(with_idle_timeout(file.bytes, idle));
         Ok(file)
     }
 
@@ -303,6 +365,111 @@ mod tests {
             s3_server_side_encryption: None,
             turbo_token: None,
         }
+    }
+
+    /// What the fake S3 does after it reads a request.
+    #[derive(Clone, Copy)]
+    enum FakeS3 {
+        /// Sends `chunks` bytes of the body, one each `gap`.
+        Slow { chunks: usize, gap: Duration },
+        /// Sends the headers and one byte, then waits forever.
+        StallBody,
+        /// Never answers.
+        StallHeaders,
+    }
+
+    /// Starts a fake S3 on loopback and returns its endpoint.
+    fn start_fake_s3(behavior: FakeS3) -> String {
+        use std::io::{BufRead, BufReader, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                std::thread::spawn(move || {
+                    let mut reader = BufReader::new(stream.try_clone().unwrap());
+                    let mut line = String::new();
+                    while reader.read_line(&mut line).unwrap_or(0) > 2 {
+                        line.clear();
+                    }
+                    match behavior {
+                        FakeS3::Slow { chunks, gap } => {
+                            let head =
+                                format!("HTTP/1.1 200 OK\r\nContent-Length: {chunks}\r\n\r\n");
+                            let _ = stream.write_all(head.as_bytes());
+                            for _ in 0..chunks {
+                                let _ = stream.write_all(b"x");
+                                let _ = stream.flush();
+                                std::thread::sleep(gap);
+                            }
+                        }
+                        FakeS3::StallBody => {
+                            let _ =
+                                stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nx");
+                            let _ = stream.flush();
+                            std::thread::sleep(Duration::from_secs(30));
+                        }
+                        FakeS3::StallHeaders => std::thread::sleep(Duration::from_secs(30)),
+                    }
+                });
+            }
+        });
+        endpoint
+    }
+
+    fn storage_for(endpoint: String, timeouts: S3Timeouts) -> Storage {
+        let settings = AppSettings {
+            s3_endpoint: Some(endpoint),
+            ..settings_with_credentials()
+        };
+        Storage::with_timeouts(&settings, timeouts)
+    }
+
+    const SHORT: S3Timeouts = S3Timeouts {
+        request: Duration::from_millis(300),
+        stream_idle: Duration::from_millis(300),
+    };
+
+    fn artifact() -> ArtifactId {
+        ArtifactId::new("team".to_owned(), "abc123".to_owned()).unwrap()
+    }
+
+    async fn read_all(storage: &Storage) -> Result<usize, StorageError> {
+        let mut file = storage.get_file(&artifact()).await?;
+        let mut read = 0;
+        while let Some(chunk) = file.bytes.next().await {
+            read += chunk.map_err(StorageError::Unreachable)?.len();
+        }
+        Ok(read)
+    }
+
+    /// A download that keeps sending data finishes, even when it takes longer
+    /// than the limit for a whole request.
+    #[tokio::test]
+    async fn streams_a_download_that_outlasts_the_request_limit() {
+        let gap = Duration::from_millis(100);
+        let storage = storage_for(start_fake_s3(FakeS3::Slow { chunks: 8, gap }), SHORT);
+
+        assert_eq!(read_all(&storage).await.unwrap(), 8);
+    }
+
+    #[tokio::test]
+    async fn stops_a_download_when_the_body_stalls() {
+        let storage = storage_for(start_fake_s3(FakeS3::StallBody), SHORT);
+
+        let error = read_all(&storage).await.unwrap_err();
+
+        assert!(error.to_string().contains("time limit"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn stops_a_download_when_s3_never_answers() {
+        let storage = storage_for(start_fake_s3(FakeS3::StallHeaders), SHORT);
+
+        let error = read_all(&storage).await.unwrap_err();
+
+        assert!(error.to_string().contains("time limit"), "{error}");
     }
 
     /// Storage ends up in tracing spans, which record it through `Debug`.
