@@ -32,7 +32,7 @@ Use the pinned Rust 1.100.0 toolchain in `rust-toolchain.toml`; `Cargo.toml` dec
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --locked -- -D warnings
+cargo clippy --locked --all-targets -- -D warnings
 cargo test --all-features --locked
 ```
 

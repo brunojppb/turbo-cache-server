@@ -62,3 +62,6 @@ wiremock = "0.6"
 strip = true    # Automatically strip symbols from the binary to reduce binary size
 opt-level = "z" # Optimize for size.
 lto = true
+
+[lints.cargo]
+unused_dependencies = "deny"
