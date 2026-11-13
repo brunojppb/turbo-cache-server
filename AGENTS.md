@@ -28,7 +28,7 @@ Read this file before changing the repository. Keep these instructions short and
 
 ## Working on changes
 
-Use the pinned Rust 1.99.1 toolchain in `rust-toolchain.toml`; `Cargo.toml` declares the same minimum. Run commands from the repository root:
+Use the pinned Rust 1.100.0 toolchain in `rust-toolchain.toml`; `Cargo.toml` declares the same minimum. Run commands from the repository root:
 
 ```sh
 cargo fmt --all -- --check

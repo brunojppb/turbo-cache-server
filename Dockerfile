@@ -1,5 +1,5 @@
 # CI overrides this from rust-toolchain.toml. Keep the standalone default in sync.
-ARG RUST_VERSION=1.99.1
+ARG RUST_VERSION=1.100.0
 FROM rust:${RUST_VERSION}-alpine AS chef
 WORKDIR /app
 RUN apk add --no-cache musl-dev perl make && \
