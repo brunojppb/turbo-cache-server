@@ -193,6 +193,64 @@ mod tests {
         assert_eq!(object_path(&id), "/my-team/abc123");
     }
 
+    /// Every id that `ArtifactId::new` accepts maps to one key under the bucket,
+    /// and no two ids share a key. The sweep covers every pair of values built
+    /// from up to three tokens of `TOKENS`. Run: `cargo test --locked --lib artifact_key_namespace`.
+    #[test]
+    fn artifact_key_namespace() {
+        const TOKENS: [&str; 8] = ["a", ".", "%2e", "%", "/", "\\", "?", "#"];
+        const MAX_TOKENS: usize = 3;
+        let bucket_url = "https://s3.example.test/bucket";
+
+        let mut values = vec![String::new()];
+        let mut layer = vec![String::new()];
+        for _ in 0..MAX_TOKENS {
+            layer = layer
+                .iter()
+                .flat_map(|prefix| TOKENS.iter().map(move |t| format!("{prefix}{t}")))
+                .collect();
+            values.extend(layer.iter().cloned());
+        }
+
+        let mut seen: HashMap<String, (String, String)> = HashMap::new();
+        for team in &values {
+            for hash in &values {
+                let Some(id) = ArtifactId::new(team.clone(), hash.clone()) else {
+                    continue;
+                };
+                let path = object_path(&id);
+                // Same URL build as rust-s3's `Request::url`.
+                let url = url::Url::parse(&format!(
+                    "{bucket_url}/{}",
+                    s3::signing::uri_encode(&path[1..], false)
+                ))
+                .unwrap_or_else(|e| panic!("({team:?}, {hash:?}) gives an invalid URL: {e}"));
+                let segments: Vec<&str> = url.path_segments().expect("base URL").collect();
+                assert_eq!(
+                    segments.len(),
+                    3,
+                    "({team:?}, {hash:?}) resolves to {}",
+                    url.path()
+                );
+                assert_eq!(
+                    segments[0], "bucket",
+                    "({team:?}, {hash:?}) leaves the bucket"
+                );
+                assert_eq!(
+                    url.host_str(),
+                    Some("s3.example.test"),
+                    "({team:?}, {hash:?})"
+                );
+                assert_eq!(url.query(), None, "({team:?}, {hash:?}) adds a query");
+                assert_eq!(url.fragment(), None, "({team:?}, {hash:?}) adds a fragment");
+                if let Some(other) = seen.insert(path.clone(), (team.clone(), hash.clone())) {
+                    panic!("({team:?}, {hash:?}) and {other:?} share the key {path}");
+                }
+            }
+        }
+        assert!(seen.len() > 1000, "the sweep accepted too few ids");
+    }
+
     /// The bucket holds the parsed number, not the bytes the client sent.
     #[test]
     fn writes_the_parsed_duration_to_storage() {
