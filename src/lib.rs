@@ -1,5 +1,5 @@
-// Only enables OpenSSL's `vendored` build for `rust-s3`'s native-tls stack on Linux.
-use openssl as _;
+// Only adds system CA roots to `rust-s3`'s rustls client.
+use reqwest_native_roots as _;
 
 pub mod app_settings;
 pub mod artifact_cache;

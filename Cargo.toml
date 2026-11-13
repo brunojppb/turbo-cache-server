@@ -18,7 +18,14 @@ name = "decay"
 [dependencies]
 actix-web = "4"
 dotenv = "0.15.0"
-rust-s3 = "0.38"
+rust-s3 = { version = "0.38", default-features = false, features = [
+  "fail-on-err",
+  "tokio-rustls-tls-ring",
+] }
+# Also trusts the system CA store, so S3 endpoints behind a private CA keep working.
+reqwest-native-roots = { package = "reqwest", version = "0.12", default-features = false, features = [
+  "rustls-tls-native-roots",
+] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-util = { version = "0.7", features = ["io"] }
@@ -30,16 +37,16 @@ tracing-bunyan-formatter = "0.3"
 tracing-opentelemetry = "0.34"
 futures = "0.3"
 http = "1"
-openssl = { version = "0.10", features = ["vendored"] }
 opentelemetry = { version = "0.33" }
 opentelemetry_sdk = { version = "0.33", features = [
   "rt-tokio",
   "experimental_trace_batch_span_processor_with_async_runtime",
   "experimental_metrics_periodicreader_with_async_runtime",
 ] }
-opentelemetry-otlp = { version = "0.33.0", features = [
+opentelemetry-otlp = { version = "0.33.0", default-features = false, features = [
   "grpc-tonic",
-  "http-json",
+  "trace",
+  "metrics",
 ] }
 opentelemetry-semantic-conventions = { version = "0.33.0", features = [
   "semconv_experimental",
@@ -60,7 +67,7 @@ wiremock = "0.6"
 # For more details on smaller binary size, see:
 # https://github.com/johnthagen/min-sized-rust/blob/094d314f0c28f7e4bffeb0b0258f71cb303bd91a/README.md
 strip = true    # Automatically strip symbols from the binary to reduce binary size
-opt-level = "z" # Optimize for size.
+opt-level = 3   # Faster SigV4 payload hashing; rustls keeps the binary small.
 lto = true
 
 [lints.cargo]
