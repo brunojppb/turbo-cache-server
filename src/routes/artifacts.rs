@@ -190,10 +190,7 @@ fn extract_team_from_req(req: &HttpRequest) -> String {
 
 fn artifact_id_from_request(req: &HttpRequest) -> Option<ArtifactId> {
     let hash = req.match_info().get("hash")?.to_owned();
-    Some(ArtifactId {
-        team: extract_team_from_req(req),
-        hash,
-    })
+    ArtifactId::new(extract_team_from_req(req), hash)
 }
 
 const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };

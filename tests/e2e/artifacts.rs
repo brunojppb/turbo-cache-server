@@ -733,3 +733,39 @@ async fn artifacts_status_test() {
     assert!(response_text.contains("\"status\""));
     assert!(response_text.contains("\"enabled\""));
 }
+
+/// A team value that changes the S3 path could leave the configured bucket:
+/// with path-style requests, `slug=../other` reaches the bucket `other`.
+#[tokio::test]
+async fn rejects_a_team_that_would_leave_its_namespace() {
+    let app = spawn_app(None).await;
+    let client = reqwest::Client::new();
+
+    Mock::given(wiremock::matchers::any())
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.storage_server)
+        .await;
+
+    for slug in [
+        "..%2Fother-bucket",
+        "..",
+        ".",
+        "",
+        "a%2Fb",
+        "a%5Cb",
+        "..%5Cother",
+    ] {
+        let url = format!("{}/v8/artifacts/abc123?slug={slug}", app.address);
+
+        let put = client.put(&url).body("bytes").send().await.unwrap();
+        let get = client.get(&url).send().await.unwrap();
+        let head = client.head(&url).send().await.unwrap();
+
+        assert_eq!(put.status(), 400, "PUT with slug={slug}");
+        assert_eq!(get.status(), 404, "GET with slug={slug}");
+        assert_eq!(head.status(), 404, "HEAD with slug={slug}");
+    }
+
+    let requests = app.storage_server.received_requests().await.unwrap();
+    assert!(requests.is_empty(), "S3 received {requests:?}");
+}
