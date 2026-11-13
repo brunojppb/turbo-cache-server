@@ -25,7 +25,7 @@ async fn upload_artifact_to_s3_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .body(file_mock.file_bytes.clone())
@@ -67,7 +67,7 @@ async fn upload_artifact_forwards_artifact_tag_as_s3_metadata_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .header("x-artifact-tag", artifact_tag)
@@ -212,7 +212,7 @@ async fn upload_artifact_returns_server_error_when_s3_fails_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .body(file_mock.file_bytes.clone())
@@ -239,7 +239,7 @@ async fn upload_artifact_returns_server_error_when_s3_is_unreachable_test() {
     let response = client
         .put(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .header("Content-Type", "application/octet-stream")
         .body(file_mock.file_bytes.clone())
@@ -268,7 +268,7 @@ async fn download_artifact_returns_server_error_when_s3_fails_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -296,7 +296,7 @@ async fn download_missing_artifact_returns_not_found_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -334,7 +334,7 @@ async fn download_artifact_from_s3_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -422,7 +422,7 @@ async fn download_artifact_returns_artifact_tag_from_s3_metadata_test() {
     let response = client
         .get(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -583,7 +583,7 @@ async fn list_team_artifacts_test() {
     let client = reqwest::Client::new();
 
     let response = client
-        .post(format!("{}/v8/artifacts", &app.address))
+        .post(format!("{}/v8/artifacts", app.address))
         .send()
         .await
         .unwrap_or_else(|_| panic!("Failed to request /v8/artifacts"));
@@ -603,7 +603,7 @@ async fn artifact_exists_test() {
     let response = client
         .head(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -668,7 +668,7 @@ async fn artifact_does_not_exist_test() {
     let response = client
         .head(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -689,7 +689,7 @@ async fn artifact_check_returns_server_error_when_s3_fails_test() {
     let response = client
         .head(format!(
             "{}/v8/artifacts/{}?slug={}",
-            &app.address, file_mock.file_hash, file_mock.team
+            app.address, file_mock.file_hash, file_mock.team
         ))
         .send()
         .await
@@ -722,7 +722,7 @@ async fn artifacts_status_test() {
     let client = reqwest::Client::new();
 
     let response = client
-        .get(format!("{}/v8/artifacts/status", &app.address))
+        .get(format!("{}/v8/artifacts/status", app.address))
         .send()
         .await
         .unwrap_or_else(|_| panic!("Failed to request /v8/artifacts/status"));
