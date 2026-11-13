@@ -1,3 +1,6 @@
+// Only enables OpenSSL's `vendored` build for `rust-s3`'s native-tls stack on Linux.
+use openssl as _;
+
 pub mod app_settings;
 pub mod artifact_cache;
 pub mod auth;
