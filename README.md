@@ -140,6 +140,47 @@ ignored.
 > If you expose the cache server to the public internet, or to networks you
 > do not fully control, you should set `TURBO_TOKEN` on the server.
 
+## Per-team tokens
+
+With one shared `TURBO_TOKEN`, every client that holds it can read and
+overwrite every team's artifacts: the team is only the `TURBO_TEAM` label the
+client sends. When several teams or projects share one server, set
+`TURBO_TOKENS_DIR` instead, so each token is bound to one team.
+
+`TURBO_TOKENS_DIR` is a directory with one file per team. The file name is
+the team (the client's `TURBO_TEAM`, sent as `slug`, or `teamId` when it
+starts with `team_`); the content is the lowercase hex SHA-256 of that team's
+token. The server holds only the hashes.
+
+```shell
+TOKEN=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+mkdir -p tokens
+printf %s "$TOKEN" | sha256sum | cut -d' ' -f1 > tokens/web-app
+TURBO_TOKENS_DIR=$PWD/tokens decay
+# The web-app team's CI then sets TURBO_TEAM=web-app and TURBO_TOKEN=$TOKEN.
+```
+
+Every request to `/v8/artifacts` must name its team and carry that team's
+token:
+
+| Request | Response |
+| --- | --- |
+| No `Authorization: Bearer` header, or a token of no team | `401` |
+| Token of another team | `403` `{"error":"TURBO_TOKEN is not for this team"}` |
+| No team named | `403` (no default namespace in this mode) |
+
+- The directory is re-read every 10 seconds, so teams can be added, removed
+  or rotated without a restart. In Kubernetes, mount a Secret (one key per
+  team) as a volume, without `subPath`; names starting with `.`, such as the
+  Secret's `..data` link, are ignored, and so is a file that is not a
+  SHA-256 hex digest.
+- If the directory cannot be read at start, the server refuses to start; if
+  it becomes unreadable later, the last set read stays in use.
+- `TURBO_TOKEN` and `TURBO_TOKENS_DIR` cannot be combined: with both set, the
+  server refuses to start.
+- `/management/health` needs no token.
+- Use long random tokens: the hashes are unsalted SHA-256.
+
 ## Deploying to Kubernetes
 
 Turbo Cache Server is a cloud-native, stateless application that runs seamlessly in Kubernetes environments. This makes it ideal for horizontally scaled deployments across multiple pods.

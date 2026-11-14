@@ -49,6 +49,7 @@ tonic = "0.14.2"
 secrecy = "0.10.3"
 tracing-actix-web = "0.7"
 subtle = "2"
+sha2 = "0.10"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

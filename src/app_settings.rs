@@ -1,7 +1,11 @@
 use secrecy::SecretString;
 use std::env;
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
+
+use crate::auth::team_tokens::DEFAULT_RELOAD_INTERVAL;
 
 /// Server-side encryption algorithms supported by AWS S3.
 /// See: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
@@ -73,7 +77,13 @@ pub struct AppSettings {
     pub s3_bucket_name: String,
     /// The server-side encryption algorithm to use for the S3 bucket.
     pub s3_server_side_encryption: Option<S3ServerSideEncryption>,
+    /// One token shared by every team. Cannot be combined with `turbo_tokens_dir`.
     pub turbo_token: Option<SecretString>,
+    /// A directory with one file per team holding the SHA-256 hex of that
+    /// team's token. Cannot be combined with `turbo_token`.
+    pub turbo_tokens_dir: Option<PathBuf>,
+    /// How often `turbo_tokens_dir` is re-read.
+    pub turbo_tokens_reload_interval: Duration,
 }
 
 pub fn get_settings() -> AppSettings {
@@ -101,6 +111,7 @@ pub fn get_settings() -> AppSettings {
     let s3_bucket_name = env::var("S3_BUCKET_NAME").unwrap_or("turbo".to_owned());
 
     let turbo_token = env::var("TURBO_TOKEN").ok().map(SecretString::from);
+    let turbo_tokens_dir = env::var_os("TURBO_TOKENS_DIR").map(PathBuf::from);
 
     AppSettings {
         host,
@@ -113,6 +124,8 @@ pub fn get_settings() -> AppSettings {
         s3_use_path_style,
         s3_server_side_encryption,
         turbo_token,
+        turbo_tokens_dir,
+        turbo_tokens_reload_interval: DEFAULT_RELOAD_INTERVAL,
     }
 }
 
