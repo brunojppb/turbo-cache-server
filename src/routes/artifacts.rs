@@ -178,19 +178,25 @@ pub async fn get_file(req: HttpRequest, cache: Data<ArtifactCache>) -> impl Resp
     builder.streaming(stream)
 }
 
-fn extract_team_from_req(req: &HttpRequest) -> String {
-    let query_string = Query::<HashMap<String, String>>::from_query(req.query_string()).unwrap();
-    let default_team_name = "no_team".to_owned();
-    query_string
-        .get("slug")
-        .or_else(|| query_string.get("teamId"))
-        .unwrap_or(&default_team_name)
-        .to_string()
+/// The namespace of a request that names no team. Per-team tokens reject such
+/// requests before they reach a handler, so only an open or shared-token server
+/// stores artifacts here.
+const DEFAULT_TEAM: &str = "no_team";
+
+/// The team a request names: its `slug` query value, else its `teamId`.
+/// Storage and per-team token checks both read the team from here, so a token
+/// is always checked against the namespace the artifact is stored in.
+pub fn team_from_query(query: &str) -> Option<String> {
+    let mut query = Query::<HashMap<String, String>>::from_query(query)
+        .ok()?
+        .into_inner();
+    query.remove("slug").or_else(|| query.remove("teamId"))
 }
 
 fn artifact_id_from_request(req: &HttpRequest) -> Option<ArtifactId> {
     let hash = req.match_info().get("hash")?.to_owned();
-    ArtifactId::new(extract_team_from_req(req), hash)
+    let team = team_from_query(req.query_string()).unwrap_or_else(|| DEFAULT_TEAM.to_owned());
+    ArtifactId::new(team, hash)
 }
 
 const DUMMY_CACHE_STATUS: CacheStatus = CacheStatus { status: "enabled" };
@@ -235,6 +241,25 @@ mod tests {
 
         assert_eq!(artifact_id_from_request(&team_id).unwrap().team, "chosen");
         assert_eq!(artifact_id_from_request(&no_team).unwrap().team, "no_team");
+    }
+
+    #[test]
+    fn reads_the_team_from_slug_then_team_id() {
+        assert_eq!(
+            team_from_query("teamId=fallback&slug=preferred"),
+            Some("preferred".to_owned())
+        );
+        assert_eq!(team_from_query("teamId=chosen"), Some("chosen".to_owned()));
+        assert_eq!(team_from_query("other=value"), None);
+        assert_eq!(team_from_query(""), None);
+    }
+
+    #[test]
+    fn decodes_a_percent_encoded_team() {
+        assert_eq!(
+            team_from_query("slug=my%20team"),
+            Some("my team".to_owned())
+        );
     }
 
     #[test]

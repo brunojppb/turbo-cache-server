@@ -364,6 +364,8 @@ mod tests {
             s3_bucket_name: "turbo".to_owned(),
             s3_server_side_encryption: None,
             turbo_token: None,
+            turbo_tokens_dir: None,
+            turbo_tokens_reload_interval: crate::auth::team_tokens::DEFAULT_RELOAD_INTERVAL,
         }
     }
 

@@ -722,6 +722,7 @@ dependencies = [
  "rust-s3",
  "secrecy",
  "serde",
+ "sha2",
  "subtle",
  "sysinfo 0.40.3",
  "tokio",
