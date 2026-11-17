@@ -4,14 +4,14 @@ use actix_web::{
     middleware::{Logger, from_fn},
     web,
 };
-use std::net::TcpListener;
+use std::{net::TcpListener, sync::Arc};
 
 use tracing_actix_web::TracingLogger;
 
 use crate::{
     app_settings::AppSettings,
     artifact_cache::ArtifactCache,
-    auth::turbo_token::validate_turbo_token,
+    auth::turbo_token::{TokenAuth, validate_turbo_token},
     http_span::DecayRootSpanBuilder,
     routes::{
         HEALTH_CHECK_PATH, artifacts_status, get_file, head_check_file, health_check, post_events,
@@ -20,7 +20,14 @@ use crate::{
     storage::Storage,
 };
 
+/// Must be called from within a Tokio runtime: with `TURBO_TOKENS_DIR` set,
+/// it starts the task that re-reads the tokens directory.
 pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, std::io::Error> {
+    let token_auth = TokenAuth::from_settings(&app_settings)?;
+    if let TokenAuth::PerTeam(tokens) = &token_auth {
+        Arc::clone(tokens).watch(app_settings.turbo_tokens_reload_interval);
+    }
+    let token_auth = web::Data::new(token_auth);
     let cache = web::Data::new(ArtifactCache::new(Storage::new(&app_settings)));
     let port = listener
         .local_addr()
@@ -46,6 +53,7 @@ pub fn run(listener: TcpListener, app_settings: AppSettings) -> Result<Server, s
             .route(HEALTH_CHECK_PATH, web::get().to(health_check))
             .service(artifacts_scope)
             .app_data(app_settings.clone())
+            .app_data(token_auth.clone())
             .app_data(cache.clone())
     })
     .listen(listener)?

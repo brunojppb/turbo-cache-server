@@ -5,7 +5,9 @@ use decay::{
 use dotenv::dotenv;
 use secrecy::SecretString;
 use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use wiremock::MockServer;
 
@@ -21,10 +23,15 @@ pub struct TestApp {
 #[derive(Default)]
 pub struct TestAppConfig {
     pub turbo_token: Option<String>,
+    /// Sets `TURBO_TOKENS_DIR`, re-read every 100 ms so tests see changes quickly.
+    pub turbo_tokens_dir: Option<PathBuf>,
     /// Replaces the mock S3 endpoint. Point it at a dead address to exercise
     /// the path where the bucket cannot be reached.
     pub s3_endpoint: Option<String>,
 }
+
+/// How often a test server re-reads its tokens directory.
+pub const TOKENS_RELOAD_INTERVAL: Duration = Duration::from_millis(100);
 
 #[allow(clippy::let_underscore_future)]
 pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
@@ -47,6 +54,8 @@ pub async fn spawn_app(config: Option<TestAppConfig>) -> TestApp {
     app_settings.s3_access_key = Some("mock_access_key".into());
     app_settings.s3_secret_key = Some("mock_secret_key".into());
     app_settings.turbo_token = config.turbo_token.map(SecretString::from);
+    app_settings.turbo_tokens_dir = config.turbo_tokens_dir;
+    app_settings.turbo_tokens_reload_interval = TOKENS_RELOAD_INTERVAL;
 
     let server = decay::startup::run(listener, app_settings).expect("Could not bind to listener");
     let _ = tokio::spawn(server);
